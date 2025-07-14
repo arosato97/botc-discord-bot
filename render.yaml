@@ -3,7 +3,10 @@ services:
     name: botc-discord-bot
     env: python
     buildCommand: pip install -r requirements.txt
-    startCommand: python botc-bot.py
+    startCommand: python bot.py
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
     disk:
       name: botc-data
       mountPath: /opt/render/project/src
