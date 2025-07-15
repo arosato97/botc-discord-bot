@@ -5,6 +5,14 @@ import asyncio
 import json
 import os
 
+# Workaround for audioop module issue
+try:
+    import audioop
+except ImportError:
+    import sys
+
+    sys.modules["audioop"] = None
+
 # Bot configuration
 intents = discord.Intents.default()
 intents.message_content = True
@@ -443,9 +451,18 @@ async def game_status(interaction: discord.Interaction):
 
 # Run the bot
 if __name__ == "__main__":
+    # Load environment variables from .env file if it exists (for local development)
+    try:
+        from dotenv import load_dotenv
+
+        load_dotenv()
+    except ImportError:
+        pass  # dotenv not installed, which is fine for production
+
     TOKEN = os.getenv("DISCORD_TOKEN")
     if not TOKEN:
         print("Error: DISCORD_TOKEN environment variable not set!")
+        print("Please set it in your Render dashboard or .env file")
         exit(1)
 
     bot.run(TOKEN)
