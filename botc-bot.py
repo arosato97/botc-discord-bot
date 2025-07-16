@@ -40,6 +40,10 @@ TRAVELER_GUEST_EMOJIS = [
     "🚢",
 ]  # Car +1, Plane +2, Train +3, Cruise Ship +4
 
+# Combined emoji sets for easy checking
+ALL_MAIN_EMOJIS = [MAIN_PLAYER_EMOJI] + MAIN_GUEST_EMOJIS
+ALL_TRAVELER_EMOJIS = [TRAVELER_EMOJI] + TRAVELER_GUEST_EMOJIS
+
 GAME_DAY = 3  # Thursday (0=Monday, 6=Sunday)
 GAME_TIME = (19, 30)  # 7:30 PM
 
@@ -237,6 +241,22 @@ Example: 🛡️ + 🚗 = You as main player + 1 traveler guest"""
     return embed
 
 
+async def remove_user_reactions_from_group(message, user, group_emojis):
+    """Remove all of a user's reactions from a specific emoji group"""
+    try:
+        for emoji in group_emojis:
+            # Check if the user has reacted to this emoji
+            for reaction in message.reactions:
+                if str(reaction.emoji) == emoji:
+                    # Check if the user has reacted to this
+                    async for reaction_user in reaction.users():
+                        if reaction_user.id == user.id:
+                            await reaction.remove(user)
+                            break
+    except Exception as e:
+        print(f"Error removing user reactions: {e}")
+
+
 @bot.event
 async def on_ready():
     print(f"{bot.user} has connected to Discord!")
@@ -249,6 +269,9 @@ async def on_ready():
         print(f"Synced {len(synced)} command(s)")
     except Exception as e:
         print(f"Failed to sync commands: {e}")
+
+    # Start health check task now that bot is ready
+    bot.loop.create_task(health_check())
 
 
 @bot.event
@@ -274,7 +297,7 @@ async def on_reaction_add(reaction, user):
     player = game_data["players"][player_index]
 
     # Handle main player emojis
-    if emoji == MAIN_PLAYER_EMOJI or emoji in MAIN_GUEST_EMOJIS:
+    if emoji in ALL_MAIN_EMOJIS:
         new_main_count = get_guest_count_from_emoji(emoji, "main")
         current_main_total = get_total_main_count()
         current_player_main = player.get("main_count", 0)
@@ -283,6 +306,13 @@ async def on_reaction_add(reaction, user):
         new_total = current_main_total - current_player_main + new_main_count
 
         if new_total <= MAX_MAIN_PLAYERS:
+            # Remove all other main player reactions from this user
+            await remove_user_reactions_from_group(
+                reaction.message, user, ALL_MAIN_EMOJIS
+            )
+            # Re-add the current reaction (since we just removed it)
+            await reaction.message.add_reaction(emoji)
+
             player["main_count"] = new_main_count
             save_game_data()
         else:
@@ -299,7 +329,7 @@ async def on_reaction_add(reaction, user):
             return
 
     # Handle traveler emojis
-    elif emoji == TRAVELER_EMOJI or emoji in TRAVELER_GUEST_EMOJIS:
+    elif emoji in ALL_TRAVELER_EMOJIS:
         new_traveler_count = get_guest_count_from_emoji(emoji, "traveler")
         current_traveler_total = get_total_traveler_count()
         current_player_traveler = player.get("traveler_count", 0)
@@ -310,6 +340,13 @@ async def on_reaction_add(reaction, user):
         )
 
         if new_total <= MAX_TRAVELERS:
+            # Remove all other traveler reactions from this user
+            await remove_user_reactions_from_group(
+                reaction.message, user, ALL_TRAVELER_EMOJIS
+            )
+            # Re-add the current reaction (since we just removed it)
+            await reaction.message.add_reaction(emoji)
+
             player["traveler_count"] = new_traveler_count
             save_game_data()
         else:
@@ -361,11 +398,11 @@ async def on_reaction_remove(reaction, user):
     player = game_data["players"][player_index]
 
     # Handle main player emoji removal
-    if emoji == MAIN_PLAYER_EMOJI or emoji in MAIN_GUEST_EMOJIS:
+    if emoji in ALL_MAIN_EMOJIS:
         player["main_count"] = 0
 
     # Handle traveler emoji removal
-    elif emoji == TRAVELER_EMOJI or emoji in TRAVELER_GUEST_EMOJIS:
+    elif emoji in ALL_TRAVELER_EMOJIS:
         player["traveler_count"] = 0
 
     # Clean up empty players
@@ -533,23 +570,6 @@ async def health_check():
                 print("Bot health check: NOT READY")
         except Exception as e:
             print(f"Health check error: {e}")
-
-
-@bot.event
-async def on_ready():
-    print(f"{bot.user} has connected to Discord!")
-    print(f"Bot is in {len(bot.guilds)} guild(s)")
-    load_game_data()
-
-    # Sync slash commands
-    try:
-        synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} command(s)")
-    except Exception as e:
-        print(f"Failed to sync commands: {e}")
-
-    # Start health check task now that bot is ready
-    bot.loop.create_task(health_check())
 
 
 # Run the bot
