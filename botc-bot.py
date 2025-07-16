@@ -6,6 +6,30 @@ import json
 import os
 import signal
 import sys
+import pytz  # You'll need to install this: pip install pytz
+
+# Timezone config
+TIMEZONE = "America/New_York"  # Change this to your timezone
+# Other common US timezones:
+# "America/New_York" (Eastern)
+# "America/Chicago" (Central)
+# "America/Denver" (Mountain)
+# "America/Los_Angeles" (Pacific)
+
+
+def get_current_time_info():
+    """Helper function to debug timezone issues"""
+    tz = pytz.timezone(TIMEZONE)
+    now_local = datetime.now(tz)
+    now_utc = datetime.now(pytz.UTC)
+
+    return {
+        "local_time": now_local.strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "utc_time": now_utc.strftime("%Y-%m-%d %H:%M:%S %Z"),
+        "timezone": TIMEZONE,
+        "next_game": get_next_thursday().strftime("%Y-%m-%d %H:%M:%S %Z"),
+    }
+
 
 # Workaround for audioop module issue
 try:
@@ -132,16 +156,25 @@ def get_guest_count_from_emoji(emoji, group_type):
 
 
 def get_next_thursday():
-    """Get the next Thursday at 7:30 PM"""
-    now = datetime.now()
+    """Get the next Thursday at 7:30 PM in the specified timezone"""
+    # Get timezone object
+    tz = pytz.timezone(TIMEZONE)
+
+    # Get current time in the specified timezone
+    now = datetime.now(tz)
+
+    # Calculate days until next Thursday
     days_ahead = GAME_DAY - now.weekday()
     if days_ahead <= 0:  # Thursday already passed this week
         days_ahead += 7
 
+    # Create next Thursday at game time
     next_thursday = now + timedelta(days=days_ahead)
-    return next_thursday.replace(
+    next_thursday = next_thursday.replace(
         hour=GAME_TIME[0], minute=GAME_TIME[1], second=0, microsecond=0
     )
+
+    return next_thursday
 
 
 def create_signup_embed():
@@ -232,11 +265,11 @@ def create_signup_embed():
 {TRAVELER_GUEST_EMOJIS[3]} +5 Travelers
 
 **Mix & Match:** React to multiple emojis to bring mixed groups!
-Example: 🛡️ + 🚗 = You as main player + 1 traveler guest"""
+Example: 🛡️ + 🚗 = You as main player + 2 traveler guest"""
 
     embed.add_field(name="How to Join", value=instructions, inline=False)
 
-    embed.set_footer(text="May the odds be in your favor! 🎲")
+    embed.set_footer(text="🎲 May the odds be ever in your favor! 🎲")
 
     return embed
 
@@ -541,6 +574,11 @@ async def create_discord_event(guild):
     try:
         next_game = get_next_thursday()
 
+        # Make sure we're working with timezone-aware datetime
+        if next_game.tzinfo is None:
+            tz = pytz.timezone(TIMEZONE)
+            next_game = tz.localize(next_game)
+
         # Create the event
         event = await guild.create_scheduled_event(
             name="Blood on the Clocktower - Weekly Game Night",
@@ -777,6 +815,45 @@ async def ping(interaction: discord.Interaction):
         print(f"Interaction expired for ping command from user {interaction.user}")
     except Exception as e:
         print(f"Error in ping command: {e}")
+
+
+@bot.tree.command(name="time_debug", description="Debug timezone and time settings")
+async def time_debug(interaction: discord.Interaction):
+    """Debug command to check timezone settings"""
+    try:
+        time_info = get_current_time_info()
+
+        embed = discord.Embed(title="🕐 Time Debug Information", color=0x0099FF)
+
+        embed.add_field(
+            name="Current Local Time", value=time_info["local_time"], inline=False
+        )
+
+        embed.add_field(
+            name="Current UTC Time", value=time_info["utc_time"], inline=False
+        )
+
+        embed.add_field(
+            name="Configured Timezone", value=time_info["timezone"], inline=False
+        )
+
+        embed.add_field(
+            name="Next Game Time", value=time_info["next_game"], inline=False
+        )
+
+        next_game = get_next_thursday()
+        embed.add_field(
+            name="Discord Timestamp",
+            value=f"<t:{int(next_game.timestamp())}:F>",
+            inline=False,
+        )
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    except Exception as e:
+        await interaction.response.send_message(
+            f"Error getting time info: {e}", ephemeral=True
+        )
 
 
 # Health check function (for monitoring)
