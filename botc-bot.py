@@ -492,6 +492,23 @@ async def health_check():
             print(f"Health check error: {e}")
 
 
+@bot.event
+async def on_ready():
+    print(f"{bot.user} has connected to Discord!")
+    print(f"Bot is in {len(bot.guilds)} guild(s)")
+    load_game_data()
+
+    # Sync slash commands
+    try:
+        synced = await bot.tree.sync()
+        print(f"Synced {len(synced)} command(s)")
+    except Exception as e:
+        print(f"Failed to sync commands: {e}")
+
+    # Start health check task now that bot is ready
+    bot.loop.create_task(health_check())
+
+
 # Run the bot
 if __name__ == "__main__":
     # Load environment variables from .env file if it exists (for local development)
@@ -507,9 +524,6 @@ if __name__ == "__main__":
         print("Error: DISCORD_TOKEN environment variable not set!")
         print("Please set it in your Render dashboard or .env file")
         sys.exit(1)
-
-    # Start health check task
-    asyncio.create_task(health_check())
 
     try:
         print("Starting Discord bot...")
