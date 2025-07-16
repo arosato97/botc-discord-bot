@@ -27,13 +27,18 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # Game configuration
 MAX_MAIN_PLAYERS = 15
 MAX_TRAVELERS = 5
-MAIN_PLAYER_EMOJI = "⚔️"  # Sword for main players
-TRAVELER_EMOJI = "🎒"  # Backpack for travelers
+MAIN_PLAYER_EMOJI = "🛡️"  # Shield for solo main player
+TRAVELER_EMOJI = "🧳"  # Luggage for solo traveler
 
-# Guest emojis for main players (1-5 guests)
-MAIN_GUEST_EMOJIS = ["🗡️", "⚡", "🛡️", "🏹", "🔥"]  # 1-5 guests for main players
-# Guest emojis for travelers (1-5 guests)
-TRAVELER_GUEST_EMOJIS = ["🌟", "🎭", "🎨", "🎪", "🎯"]  # 1-5 guests for travelers
+# Guest emojis for main players (1-4 guests)
+MAIN_GUEST_EMOJIS = ["🗡️", "⚔️", "🏹", "⚡"]  # Dagger +1, Swords +2, Bow +3, Lightning +4
+# Guest emojis for travelers (1-4 guests)
+TRAVELER_GUEST_EMOJIS = [
+    "🚗",
+    "✈️",
+    "🚂",
+    "🚢",
+]  # Car +1, Plane +2, Train +3, Cruise Ship +4
 
 GAME_DAY = 3  # Thursday (0=Monday, 6=Sunday)
 GAME_TIME = (19, 30)  # 7:30 PM
@@ -180,7 +185,7 @@ def create_signup_embed():
         travelers_text = "No travelers signed up yet"
 
     embed.add_field(
-        name=f"🎒 Travelers ({total_traveler_count}/{MAX_TRAVELERS})",
+        name=f"🧳 Travelers ({total_traveler_count}/{MAX_TRAVELERS})",
         value=travelers_text,
         inline=True,
     )
@@ -188,11 +193,17 @@ def create_signup_embed():
     # Instructions
     instructions = f"""**Main Players:**
 {MAIN_PLAYER_EMOJI} Solo player
-{' '.join(f'{emoji} +{i+1}' for i, emoji in enumerate(MAIN_GUEST_EMOJIS))}
+{MAIN_GUEST_EMOJIS[0]} +1 guest
+{MAIN_GUEST_EMOJIS[1]} +2 guests
+{MAIN_GUEST_EMOJIS[2]} +3 guests
+{MAIN_GUEST_EMOJIS[3]} +4 guests
 
 **Travelers:**
 {TRAVELER_EMOJI} Solo traveler
-{' '.join(f'{emoji} +{i+1}' for i, emoji in enumerate(TRAVELER_GUEST_EMOJIS))}"""
+{TRAVELER_GUEST_EMOJIS[0]} +1 guest
+{TRAVELER_GUEST_EMOJIS[1]} +2 guests
+{TRAVELER_GUEST_EMOJIS[2]} +3 guests
+{TRAVELER_GUEST_EMOJIS[3]} +4 guests"""
 
     embed.add_field(name="How to Join", value=instructions, inline=False)
 
