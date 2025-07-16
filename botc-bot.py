@@ -45,8 +45,7 @@ GAME_TIME = (19, 30)  # 7:30 PM
 
 # Storage for game data
 game_data = {
-    "main_players": [],  # [{'user_id': int, 'guests': int}, ...]
-    "travelers": [],  # [{'user_id': int, 'guests': int}, ...]
+    "players": [],  # [{'user_id': int, 'main_count': int, 'traveler_count': int}, ...]
     "message_id": None,
     "channel_id": None,
     "event_id": None,
@@ -90,17 +89,17 @@ def load_game_data():
 
 def get_total_main_count():
     """Get total count of main players including guests"""
-    return sum(player.get("guests", 0) + 1 for player in game_data["main_players"])
+    return sum(player.get("main_count", 0) for player in game_data["players"])
 
 
 def get_total_traveler_count():
     """Get total count of travelers including guests"""
-    return sum(traveler.get("guests", 0) + 1 for traveler in game_data["travelers"])
+    return sum(player.get("traveler_count", 0) for player in game_data["players"])
 
 
-def find_player_in_group(user_id, group):
-    """Find a player in a group by user_id"""
-    for i, player in enumerate(group):
+def find_player(user_id):
+    """Find a player by user_id"""
+    for i, player in enumerate(game_data["players"]):
         if player["user_id"] == user_id:
             return i
     return -1
@@ -109,13 +108,21 @@ def find_player_in_group(user_id, group):
 def get_guest_count_from_emoji(emoji, group_type):
     """Get the number of guests from emoji"""
     if group_type == "main":
+        if emoji == MAIN_PLAYER_EMOJI:
+            return 1  # Solo player counts as 1
         try:
-            return MAIN_GUEST_EMOJIS.index(emoji) + 1
+            return (
+                MAIN_GUEST_EMOJIS.index(emoji) + 2
+            )  # +1 for the emoji index, +1 for the player
         except ValueError:
             return 0
     else:  # traveler
+        if emoji == TRAVELER_EMOJI:
+            return 1  # Solo traveler counts as 1
         try:
-            return TRAVELER_GUEST_EMOJIS.index(emoji) + 1
+            return (
+                TRAVELER_GUEST_EMOJIS.index(emoji) + 2
+            )  # +1 for the emoji index, +1 for the player
         except ValueError:
             return 0
 
@@ -137,7 +144,7 @@ def create_signup_embed():
     """Create the signup embed message"""
     embed = discord.Embed(
         title="🕐 Blood on the Clocktower - Weekly Game Night",
-        description="React to join the game! First come, first served.",
+        description="React to join the game! You can react to multiple emojis to bring mixed groups.",
         color=0x8B0000,
     )
 
@@ -146,40 +153,32 @@ def create_signup_embed():
         name="📅 Next Game", value=f"<t:{int(next_game.timestamp())}:F>", inline=False
     )
 
+    # Get totals
+    total_main_count = get_total_main_count()
+    total_traveler_count = get_total_traveler_count()
+
     # Main players section
     main_players_text = ""
-    total_main_count = get_total_main_count()
-
-    for i, player in enumerate(game_data["main_players"], 1):
-        guest_count = player.get("guests", 0)
-        guest_text = (
-            f" (+{guest_count} guest{'s' if guest_count != 1 else ''})"
-            if guest_count > 0
-            else ""
-        )
-        main_players_text += f"{i}. <@{player['user_id']}>{guest_text}\n"
+    for i, player in enumerate(game_data["players"], 1):
+        main_count = player.get("main_count", 0)
+        if main_count > 0:
+            main_players_text += f"{i}. <@{player['user_id']}> ({main_count})\n"
 
     if not main_players_text:
-        main_players_text = "No players signed up yet"
+        main_players_text = "No main players signed up yet"
 
     embed.add_field(
-        name=f"⚔️ Main Players ({total_main_count}/{MAX_MAIN_PLAYERS})",
+        name=f"🛡️ Main Players ({total_main_count}/{MAX_MAIN_PLAYERS})",
         value=main_players_text,
         inline=True,
     )
 
     # Travelers section
     travelers_text = ""
-    total_traveler_count = get_total_traveler_count()
-
-    for i, traveler in enumerate(game_data["travelers"], 1):
-        guest_count = traveler.get("guests", 0)
-        guest_text = (
-            f" (+{guest_count} guest{'s' if guest_count != 1 else ''})"
-            if guest_count > 0
-            else ""
-        )
-        travelers_text += f"{i}. <@{traveler['user_id']}>{guest_text}\n"
+    for i, player in enumerate(game_data["players"], 1):
+        traveler_count = player.get("traveler_count", 0)
+        if traveler_count > 0:
+            travelers_text += f"{i}. <@{player['user_id']}> ({traveler_count})\n"
 
     if not travelers_text:
         travelers_text = "No travelers signed up yet"
@@ -190,20 +189,46 @@ def create_signup_embed():
         inline=True,
     )
 
+    # Combined view section
+    combined_text = ""
+    for i, player in enumerate(game_data["players"], 1):
+        main_count = player.get("main_count", 0)
+        traveler_count = player.get("traveler_count", 0)
+
+        if main_count > 0 or traveler_count > 0:
+            parts = []
+            if main_count > 0:
+                parts.append(f"🛡️{main_count}")
+            if traveler_count > 0:
+                parts.append(f"🧳{traveler_count}")
+            combined_text += f"{i}. <@{player['user_id']}> {' + '.join(parts)}\n"
+
+    if not combined_text:
+        combined_text = "No players signed up yet"
+
+    embed.add_field(
+        name="👥 All Signups",
+        value=combined_text,
+        inline=False,
+    )
+
     # Instructions
     instructions = f"""**Main Players:**
-{MAIN_PLAYER_EMOJI} Solo player
-{MAIN_GUEST_EMOJIS[0]} +1 guest
-{MAIN_GUEST_EMOJIS[1]} +2 guests
-{MAIN_GUEST_EMOJIS[2]} +3 guests
-{MAIN_GUEST_EMOJIS[3]} +4 guests
+{MAIN_PLAYER_EMOJI} Solo player (1)
+{MAIN_GUEST_EMOJIS[0]} +1 guest (2 total)
+{MAIN_GUEST_EMOJIS[1]} +2 guests (3 total)
+{MAIN_GUEST_EMOJIS[2]} +3 guests (4 total)
+{MAIN_GUEST_EMOJIS[3]} +4 guests (5 total)
 
 **Travelers:**
-{TRAVELER_EMOJI} Solo traveler
-{TRAVELER_GUEST_EMOJIS[0]} +1 guest
-{TRAVELER_GUEST_EMOJIS[1]} +2 guests
-{TRAVELER_GUEST_EMOJIS[2]} +3 guests
-{TRAVELER_GUEST_EMOJIS[3]} +4 guests"""
+{TRAVELER_EMOJI} Solo traveler (1)
+{TRAVELER_GUEST_EMOJIS[0]} +1 guest (2 total)
+{TRAVELER_GUEST_EMOJIS[1]} +2 guests (3 total)
+{TRAVELER_GUEST_EMOJIS[2]} +3 guests (4 total)
+{TRAVELER_GUEST_EMOJIS[3]} +4 guests (5 total)
+
+**Mix & Match:** React to multiple emojis to bring mixed groups!
+Example: 🛡️ + 🚗 = You as main player + 1 traveler guest"""
 
     embed.add_field(name="How to Join", value=instructions, inline=False)
 
@@ -238,78 +263,74 @@ async def on_reaction_add(reaction, user):
     user_id = user.id
     emoji = str(reaction.emoji)
 
-    # Remove user from both groups first (in case they're switching)
-    main_player_index = find_player_in_group(user_id, game_data["main_players"])
-    traveler_index = find_player_in_group(user_id, game_data["travelers"])
+    # Find or create player entry
+    player_index = find_player(user_id)
+    if player_index == -1:
+        game_data["players"].append(
+            {"user_id": user_id, "main_count": 0, "traveler_count": 0}
+        )
+        player_index = len(game_data["players"]) - 1
 
-    if main_player_index >= 0:
-        game_data["main_players"].pop(main_player_index)
-    if traveler_index >= 0:
-        game_data["travelers"].pop(traveler_index)
+    player = game_data["players"][player_index]
 
-    # Handle main player signups
+    # Handle main player emojis
     if emoji == MAIN_PLAYER_EMOJI or emoji in MAIN_GUEST_EMOJIS:
-        guests = (
-            get_guest_count_from_emoji(emoji, "main")
-            if emoji != MAIN_PLAYER_EMOJI
-            else 0
-        )
-        total_new_count = (
-            get_total_main_count() + guests + 1
-        )  # +1 for the player themselves
+        new_main_count = get_guest_count_from_emoji(emoji, "main")
+        current_main_total = get_total_main_count()
+        current_player_main = player.get("main_count", 0)
 
-        if total_new_count <= MAX_MAIN_PLAYERS:
-            game_data["main_players"].append({"user_id": user_id, "guests": guests})
+        # Calculate if this change would exceed limits
+        new_total = current_main_total - current_player_main + new_main_count
+
+        if new_total <= MAX_MAIN_PLAYERS:
+            player["main_count"] = new_main_count
             save_game_data()
         else:
             # Remove the reaction and send message
             await reaction.remove(user)
-            available_spots = MAX_MAIN_PLAYERS - get_total_main_count()
-            if available_spots > 0:
-                await user.send(
-                    f"🚫 **Not enough main player spots!** "
-                    f"You requested {guests + 1} spot{'s' if guests + 1 != 1 else ''} but only {available_spots} remain. "
-                    f"Try a smaller group or react with {TRAVELER_EMOJI} to join as travelers!"
-                )
-            else:
-                await user.send(
-                    "🚫 **Main players are full!** "
-                    f"Try reacting with {TRAVELER_EMOJI} to join as travelers, "
-                    "or come watch the mayhem unfold! 🍿"
-                )
+            available_spots = MAX_MAIN_PLAYERS - (
+                current_main_total - current_player_main
+            )
+            await user.send(
+                f"🚫 **Not enough main player spots!** "
+                f"You requested {new_main_count} main player spot{'s' if new_main_count != 1 else ''} but only {available_spots} remain. "
+                f"Try a smaller group or add travelers instead!"
+            )
             return
 
-    # Handle traveler signups
+    # Handle traveler emojis
     elif emoji == TRAVELER_EMOJI or emoji in TRAVELER_GUEST_EMOJIS:
-        guests = (
-            get_guest_count_from_emoji(emoji, "traveler")
-            if emoji != TRAVELER_EMOJI
-            else 0
-        )
-        total_new_count = (
-            get_total_traveler_count() + guests + 1
-        )  # +1 for the player themselves
+        new_traveler_count = get_guest_count_from_emoji(emoji, "traveler")
+        current_traveler_total = get_total_traveler_count()
+        current_player_traveler = player.get("traveler_count", 0)
 
-        if total_new_count <= MAX_TRAVELERS:
-            game_data["travelers"].append({"user_id": user_id, "guests": guests})
+        # Calculate if this change would exceed limits
+        new_total = (
+            current_traveler_total - current_player_traveler + new_traveler_count
+        )
+
+        if new_total <= MAX_TRAVELERS:
+            player["traveler_count"] = new_traveler_count
             save_game_data()
         else:
             # Remove the reaction and send message
             await reaction.remove(user)
-            available_spots = MAX_TRAVELERS - get_total_traveler_count()
-            if available_spots > 0:
-                await user.send(
-                    f"🚫 **Not enough traveler spots!** "
-                    f"You requested {guests + 1} spot{'s' if guests + 1 != 1 else ''} but only {available_spots} remain. "
-                    f"Try a smaller group or react with {MAIN_PLAYER_EMOJI} to join as main players!"
-                )
-            else:
-                await user.send(
-                    "🚫 **Travelers are full!** "
-                    f"Try reacting with {MAIN_PLAYER_EMOJI} to join as main players, "
-                    "or come watch the mayhem unfold! 🍿"
-                )
+            available_spots = MAX_TRAVELERS - (
+                current_traveler_total - current_player_traveler
+            )
+            await user.send(
+                f"🚫 **Not enough traveler spots!** "
+                f"You requested {new_traveler_count} traveler spot{'s' if new_traveler_count != 1 else ''} but only {available_spots} remain. "
+                f"Try a smaller group or add main players instead!"
+            )
             return
+
+    # Clean up empty players
+    game_data["players"] = [
+        p
+        for p in game_data["players"]
+        if p.get("main_count", 0) > 0 or p.get("traveler_count", 0) > 0
+    ]
 
     # Update the embed
     embed = create_signup_embed()
@@ -332,15 +353,27 @@ async def on_reaction_remove(reaction, user):
     user_id = user.id
     emoji = str(reaction.emoji)
 
-    # Remove user from appropriate group
+    # Find player
+    player_index = find_player(user_id)
+    if player_index == -1:
+        return
+
+    player = game_data["players"][player_index]
+
+    # Handle main player emoji removal
     if emoji == MAIN_PLAYER_EMOJI or emoji in MAIN_GUEST_EMOJIS:
-        main_player_index = find_player_in_group(user_id, game_data["main_players"])
-        if main_player_index >= 0:
-            game_data["main_players"].pop(main_player_index)
+        player["main_count"] = 0
+
+    # Handle traveler emoji removal
     elif emoji == TRAVELER_EMOJI or emoji in TRAVELER_GUEST_EMOJIS:
-        traveler_index = find_player_in_group(user_id, game_data["travelers"])
-        if traveler_index >= 0:
-            game_data["travelers"].pop(traveler_index)
+        player["traveler_count"] = 0
+
+    # Clean up empty players
+    game_data["players"] = [
+        p
+        for p in game_data["players"]
+        if p.get("main_count", 0) > 0 or p.get("traveler_count", 0) > 0
+    ]
 
     save_game_data()
 
@@ -458,8 +491,7 @@ async def reset_game(interaction: discord.Interaction):
         return
 
     # Clear game data
-    game_data["main_players"] = []
-    game_data["travelers"] = []
+    game_data["players"] = []
     game_data["message_id"] = None
     game_data["channel_id"] = None
     game_data["event_id"] = None
