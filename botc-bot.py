@@ -218,18 +218,18 @@ def create_signup_embed():
 
     # Instructions
     instructions = f"""**Main Players:**
-{MAIN_PLAYER_EMOJI} Solo player (1)
-{MAIN_GUEST_EMOJIS[0]} +1 guest (2 total)
-{MAIN_GUEST_EMOJIS[1]} +2 guests (3 total)
-{MAIN_GUEST_EMOJIS[2]} +3 guests (4 total)
-{MAIN_GUEST_EMOJIS[3]} +4 guests (5 total)
+{MAIN_PLAYER_EMOJI} +1 Main Player
+{MAIN_GUEST_EMOJIS[0]} +2 Main Players
+{MAIN_GUEST_EMOJIS[1]} +3 Main Players
+{MAIN_GUEST_EMOJIS[2]} +4 Main Players
+{MAIN_GUEST_EMOJIS[3]} +5 Main Players
 
 **Travelers:**
-{TRAVELER_EMOJI} Solo traveler (1)
-{TRAVELER_GUEST_EMOJIS[0]} +1 guest (2 total)
-{TRAVELER_GUEST_EMOJIS[1]} +2 guests (3 total)
-{TRAVELER_GUEST_EMOJIS[2]} +3 guests (4 total)
-{TRAVELER_GUEST_EMOJIS[3]} +4 guests (5 total)
+{TRAVELER_EMOJI} +1 Traveler
+{TRAVELER_GUEST_EMOJIS[0]} +2 Travelers
+{TRAVELER_GUEST_EMOJIS[1]} +3 Travelers
+{TRAVELER_GUEST_EMOJIS[2]} +4 Travelers
+{TRAVELER_GUEST_EMOJIS[3]} +5 Travelers
 
 **Mix & Match:** React to multiple emojis to bring mixed groups!
 Example: 🛡️ + 🚗 = You as main player + 1 traveler guest"""
