@@ -517,6 +517,60 @@ async def setup_game(interaction: discord.Interaction):
     )
 
 
+@bot.tree.command(
+    name="reset_signups",
+    description="Reset current signups but keep the message and event",
+)
+async def reset_signups(interaction: discord.Interaction):
+    """Slash command to reset only the player signups"""
+    # Check permissions
+    if not interaction.user.guild_permissions.manage_events:
+        await interaction.response.send_message(
+            "You need 'Manage Events' permission to reset signups!", ephemeral=True
+        )
+        return
+
+    # Check if there's an active game setup
+    if not game_data.get("message_id"):
+        await interaction.response.send_message(
+            "❌ No active game found! Use `/setup_game` to create a new signup first.",
+            ephemeral=True,
+        )
+        return
+
+    # Clear only the player data, keep message and event info
+    game_data["players"] = []
+    save_game_data()
+
+    # Try to update the existing message with reset embed
+    try:
+        channel = bot.get_channel(game_data["channel_id"])
+        if channel:
+            message = await channel.fetch_message(game_data["message_id"])
+            embed = create_signup_embed()
+            await message.edit(embed=embed)
+
+            # Update Discord event if it exists
+            if game_data.get("event_id"):
+                await update_discord_event(interaction.guild)
+
+            await interaction.response.send_message(
+                "✅ All signups have been cleared! The signup message has been updated.",
+                ephemeral=True,
+            )
+        else:
+            await interaction.response.send_message(
+                "⚠️ Signups cleared but couldn't find the original message to update.",
+                ephemeral=True,
+            )
+    except Exception as e:
+        print(f"Error updating message after reset: {e}")
+        await interaction.response.send_message(
+            "✅ Signups cleared but there was an error updating the message.",
+            ephemeral=True,
+        )
+
+
 @bot.tree.command(name="reset_game", description="Reset the game for a new week")
 async def reset_game(interaction: discord.Interaction):
     """Slash command to reset the game for a new week"""
