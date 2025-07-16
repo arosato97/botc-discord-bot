@@ -308,10 +308,8 @@ async def on_reaction_add(reaction, user):
         if new_total <= MAX_MAIN_PLAYERS:
             # Remove all other main player reactions from this user
             await remove_user_reactions_from_group(
-                reaction.message, user, ALL_MAIN_EMOJIS
+                reaction.message, user, [e for e in ALL_MAIN_EMOJIS if e != emoji]
             )
-            # Re-add the current reaction (since we just removed it)
-            await reaction.message.add_reaction(emoji)
 
             player["main_count"] = new_main_count
             save_game_data()
@@ -342,10 +340,8 @@ async def on_reaction_add(reaction, user):
         if new_total <= MAX_TRAVELERS:
             # Remove all other traveler reactions from this user
             await remove_user_reactions_from_group(
-                reaction.message, user, ALL_TRAVELER_EMOJIS
+                reaction.message, user, [e for e in ALL_TRAVELER_EMOJIS if e != emoji]
             )
-            # Re-add the current reaction (since we just removed it)
-            await reaction.message.add_reaction(emoji)
 
             player["traveler_count"] = new_traveler_count
             save_game_data()
@@ -399,11 +395,35 @@ async def on_reaction_remove(reaction, user):
 
     # Handle main player emoji removal
     if emoji in ALL_MAIN_EMOJIS:
-        player["main_count"] = 0
+        # Check if user still has any main player reactions
+        has_main_reaction = False
+        for reaction_check in reaction.message.reactions:
+            if str(reaction_check.emoji) in ALL_MAIN_EMOJIS:
+                async for reaction_user in reaction_check.users():
+                    if reaction_user.id == user_id:
+                        has_main_reaction = True
+                        break
+                if has_main_reaction:
+                    break
+
+        if not has_main_reaction:
+            player["main_count"] = 0
 
     # Handle traveler emoji removal
     elif emoji in ALL_TRAVELER_EMOJIS:
-        player["traveler_count"] = 0
+        # Check if user still has any traveler reactions
+        has_traveler_reaction = False
+        for reaction_check in reaction.message.reactions:
+            if str(reaction_check.emoji) in ALL_TRAVELER_EMOJIS:
+                async for reaction_user in reaction_check.users():
+                    if reaction_user.id == user_id:
+                        has_traveler_reaction = True
+                        break
+                if has_traveler_reaction:
+                    break
+
+        if not has_traveler_reaction:
+            player["traveler_count"] = 0
 
     # Clean up empty players
     game_data["players"] = [
