@@ -599,17 +599,71 @@ async def reset_game(interaction: discord.Interaction):
 @bot.tree.command(name="game_status", description="Check the current game status")
 async def game_status(interaction: discord.Interaction):
     """Slash command to check game status"""
-    embed = create_signup_embed()
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    try:
+        embed = create_signup_embed()
+
+        # Check if we can respond to the interaction
+        if interaction.response.is_done():
+            # If already responded, use followup
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        else:
+            # Normal response
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    except discord.NotFound:
+        # Interaction expired or not found
+        print(
+            f"Interaction expired for game_status command from user {interaction.user}"
+        )
+        try:
+            # Try to send a followup message
+            await interaction.followup.send(
+                "⚠️ The interaction expired. Please try the command again.",
+                ephemeral=True,
+            )
+        except:
+            # If followup also fails, just log it
+            print("Failed to send followup message for expired interaction")
+    except discord.HTTPException as e:
+        print(f"HTTP exception in game_status: {e}")
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "❌ There was an error processing your request. Please try again.",
+                    ephemeral=True,
+                )
+        except:
+            pass
+    except Exception as e:
+        print(f"Unexpected error in game_status: {e}")
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    "❌ An unexpected error occurred. Please try again.", ephemeral=True
+                )
+        except:
+            pass
 
 
 @bot.tree.command(name="ping", description="Check if the bot is responsive")
 async def ping(interaction: discord.Interaction):
     """Simple ping command to test bot responsiveness"""
-    latency = round(bot.latency * 1000)
-    await interaction.response.send_message(
-        f"🏓 Pong! Latency: {latency}ms", ephemeral=True
-    )
+    try:
+        latency = round(bot.latency * 1000)
+
+        if interaction.response.is_done():
+            await interaction.followup.send(
+                f"🏓 Pong! Latency: {latency}ms", ephemeral=True
+            )
+        else:
+            await interaction.response.send_message(
+                f"🏓 Pong! Latency: {latency}ms", ephemeral=True
+            )
+
+    except discord.NotFound:
+        print(f"Interaction expired for ping command from user {interaction.user}")
+    except Exception as e:
+        print(f"Error in ping command: {e}")
 
 
 # Health check function (for monitoring)
