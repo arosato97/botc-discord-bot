@@ -241,9 +241,63 @@ Example: 🛡️ + 🚗 = You as main player + 1 traveler guest"""
     return embed
 
 
+def check_bot_permissions(channel):
+    """Check if the bot has necessary permissions"""
+    permissions = channel.permissions_for(channel.guild.me)
+
+    required_perms = {
+        "read_messages": permissions.read_messages,
+        "send_messages": permissions.send_messages,
+        "manage_messages": permissions.manage_messages,  # Needed to remove reactions
+        "add_reactions": permissions.add_reactions,
+        "read_message_history": permissions.read_message_history,
+        "embed_links": permissions.embed_links,
+        "manage_events": permissions.manage_events,  # For Discord events
+    }
+
+    missing_perms = [perm for perm, has_perm in required_perms.items() if not has_perm]
+
+    return missing_perms
+
+
+async def safe_remove_reaction(message, emoji, user):
+    """Safely remove a reaction with error handling"""
+    try:
+        # Check if bot has manage_messages permission
+        if not message.channel.permissions_for(message.guild.me).manage_messages:
+            print(f"Bot lacks 'Manage Messages' permission in {message.channel.name}")
+            return False
+
+        await message.remove_reaction(emoji, user)
+        return True
+    except discord.Forbidden:
+        print(
+            f"Bot doesn't have permission to remove reactions in {message.channel.name}"
+        )
+        return False
+    except discord.NotFound:
+        print(f"Reaction {emoji} not found or user {user} hasn't reacted")
+        return False
+    except discord.HTTPException as e:
+        print(f"HTTP error removing reaction: {e}")
+        return False
+    except Exception as e:
+        print(f"Unexpected error removing reaction: {e}")
+        return False
+
+
 async def remove_user_reactions_from_group(message, user, group_emojis):
     """Remove all of a user's reactions from a specific emoji group"""
     try:
+        # Check permissions first
+        missing_perms = check_bot_permissions(message.channel)
+        if "manage_messages" in missing_perms:
+            print(
+                f"Warning: Bot missing 'Manage Messages' permission in {message.channel.name}"
+            )
+            return False
+
+        success = True
         for emoji in group_emojis:
             # Check if the user has reacted to this emoji
             for reaction in message.reactions:
@@ -251,10 +305,38 @@ async def remove_user_reactions_from_group(message, user, group_emojis):
                     # Check if the user has reacted to this
                     async for reaction_user in reaction.users():
                         if reaction_user.id == user.id:
-                            await reaction.remove(user)
+                            removal_success = await safe_remove_reaction(
+                                message, emoji, user
+                            )
+                            if not removal_success:
+                                success = False
                             break
+        return success
     except Exception as e:
         print(f"Error removing user reactions: {e}")
+        return False
+
+
+@bot.tree.command(
+    name="check_permissions", description="Check bot permissions in this channel"
+)
+async def check_permissions(interaction: discord.Interaction):
+    """Check if the bot has all required permissions"""
+    missing_perms = check_bot_permissions(interaction.channel)
+
+    if not missing_perms:
+        await interaction.response.send_message(
+            "✅ Bot has all required permissions!", ephemeral=True
+        )
+    else:
+        perm_list = "\n".join(
+            [f"• {perm.replace('_', ' ').title()}" for perm in missing_perms]
+        )
+        await interaction.response.send_message(
+            f"❌ Bot is missing the following permissions:\n{perm_list}\n\n"
+            f"Please ask a server administrator to grant these permissions to the bot.",
+            ephemeral=True,
+        )
 
 
 @bot.event
@@ -274,6 +356,7 @@ async def on_ready():
     bot.loop.create_task(health_check())
 
 
+# Updated on_reaction_add with better error handling
 @bot.event
 async def on_reaction_add(reaction, user):
     """Handle reaction additions for signup"""
@@ -282,6 +365,14 @@ async def on_reaction_add(reaction, user):
 
     if reaction.message.id != game_data.get("message_id"):
         return
+
+    # Check permissions at the start
+    missing_perms = check_bot_permissions(reaction.message.channel)
+    if "manage_messages" in missing_perms:
+        await user.send(
+            "⚠️ **Bot Permission Issue**: The bot doesn't have 'Manage Messages' permission, "
+            "so it can't remove your old reactions. Please ask a server admin to grant this permission."
+        )
 
     user_id = user.id
     emoji = str(reaction.emoji)
@@ -307,15 +398,16 @@ async def on_reaction_add(reaction, user):
 
         if new_total <= MAX_MAIN_PLAYERS:
             # Remove all other main player reactions from this user
-            await remove_user_reactions_from_group(
-                reaction.message, user, [e for e in ALL_MAIN_EMOJIS if e != emoji]
+            other_emojis = [e for e in ALL_MAIN_EMOJIS if e != emoji]
+            removal_success = await remove_user_reactions_from_group(
+                reaction.message, user, other_emojis
             )
 
             player["main_count"] = new_main_count
             save_game_data()
         else:
             # Remove the reaction and send message
-            await reaction.remove(user)
+            await safe_remove_reaction(reaction.message, emoji, user)
             available_spots = MAX_MAIN_PLAYERS - (
                 current_main_total - current_player_main
             )
@@ -339,15 +431,16 @@ async def on_reaction_add(reaction, user):
 
         if new_total <= MAX_TRAVELERS:
             # Remove all other traveler reactions from this user
-            await remove_user_reactions_from_group(
-                reaction.message, user, [e for e in ALL_TRAVELER_EMOJIS if e != emoji]
+            other_emojis = [e for e in ALL_TRAVELER_EMOJIS if e != emoji]
+            removal_success = await remove_user_reactions_from_group(
+                reaction.message, user, other_emojis
             )
 
             player["traveler_count"] = new_traveler_count
             save_game_data()
         else:
             # Remove the reaction and send message
-            await reaction.remove(user)
+            await safe_remove_reaction(reaction.message, emoji, user)
             available_spots = MAX_TRAVELERS - (
                 current_traveler_total - current_player_traveler
             )
