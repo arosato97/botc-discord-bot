@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 import asyncio
 import json
 import os
+import signal
+import sys
 
 # Workaround for audioop module issue
 try:
@@ -47,11 +49,23 @@ game_data = {
 }
 
 
+# Graceful shutdown handling
+def signal_handler(signum, frame):
+    print(f"Received signal {signum}, shutting down gracefully...")
+    save_game_data()
+    sys.exit(0)
+
+
+signal.signal(signal.SIGTERM, signal_handler)
+signal.signal(signal.SIGINT, signal_handler)
+
+
 def save_game_data():
     """Save game data to a JSON file"""
     try:
         with open("game_data.json", "w") as f:
             json.dump(game_data, f, indent=2)
+        print("Game data saved successfully")
     except Exception as e:
         print(f"Error saving game data: {e}")
 
@@ -62,7 +76,9 @@ def load_game_data():
     try:
         if os.path.exists("game_data.json"):
             with open("game_data.json", "r") as f:
-                game_data = json.load(f)
+                loaded_data = json.load(f)
+                game_data.update(loaded_data)
+            print("Game data loaded successfully")
     except Exception as e:
         print(f"Error loading game data: {e}")
 
@@ -97,6 +113,9 @@ def get_guest_count_from_emoji(emoji, group_type):
             return TRAVELER_GUEST_EMOJIS.index(emoji) + 1
         except ValueError:
             return 0
+
+
+def get_next_thursday():
     """Get the next Thursday at 7:30 PM"""
     now = datetime.now()
     days_ahead = GAME_DAY - now.weekday()
@@ -185,6 +204,7 @@ def create_signup_embed():
 @bot.event
 async def on_ready():
     print(f"{bot.user} has connected to Discord!")
+    print(f"Bot is in {len(bot.guilds)} guild(s)")
     load_game_data()
 
     # Sync slash commands
@@ -449,6 +469,29 @@ async def game_status(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
+@bot.tree.command(name="ping", description="Check if the bot is responsive")
+async def ping(interaction: discord.Interaction):
+    """Simple ping command to test bot responsiveness"""
+    latency = round(bot.latency * 1000)
+    await interaction.response.send_message(
+        f"🏓 Pong! Latency: {latency}ms", ephemeral=True
+    )
+
+
+# Health check function (for monitoring)
+async def health_check():
+    """Simple health check that runs periodically"""
+    while True:
+        try:
+            await asyncio.sleep(300)  # Check every 5 minutes
+            if bot.is_ready():
+                print(f"Bot health check: OK - Connected to {len(bot.guilds)} guilds")
+            else:
+                print("Bot health check: NOT READY")
+        except Exception as e:
+            print(f"Health check error: {e}")
+
+
 # Run the bot
 if __name__ == "__main__":
     # Load environment variables from .env file if it exists (for local development)
@@ -463,6 +506,17 @@ if __name__ == "__main__":
     if not TOKEN:
         print("Error: DISCORD_TOKEN environment variable not set!")
         print("Please set it in your Render dashboard or .env file")
-        exit(1)
+        sys.exit(1)
 
-    bot.run(TOKEN)
+    # Start health check task
+    asyncio.create_task(health_check())
+
+    try:
+        print("Starting Discord bot...")
+        bot.run(TOKEN)
+    except KeyboardInterrupt:
+        print("Bot stopped by user")
+    except Exception as e:
+        print(f"Bot crashed: {e}")
+        save_game_data()
+        sys.exit(1)
