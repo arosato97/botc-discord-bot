@@ -265,7 +265,7 @@ def create_signup_embed():
 {TRAVELER_GUEST_EMOJIS[3]} +5 Travelers
 
 **Mix & Match:** React to multiple emojis to bring mixed groups!
-Example: 🛡️ + 🚗 = You as main player + 2 traveler guest"""
+Example: 🛡️ + 🚗 = You as main player + 2 traveler guests!"""
 
     embed.add_field(name="How to Join", value=instructions, inline=False)
 
