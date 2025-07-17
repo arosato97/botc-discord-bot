@@ -53,6 +53,7 @@ MAX_MAIN_PLAYERS = 15
 MAX_TRAVELERS = 5
 MAIN_PLAYER_EMOJI = "🛡️"  # Shield for solo main player
 TRAVELER_EMOJI = "🧳"  # Luggage for solo traveler
+HANGOUT_EMOJI = "🏄‍♀️"  # Woman surfing for hanging out
 
 # Guest emojis for main players (1-4 guests)
 MAIN_GUEST_EMOJIS = ["🗡️", "⚔️", "🏹", "⚡"]  # Dagger +1, Swords +2, Bow +3, Lightning +4
@@ -73,7 +74,7 @@ GAME_TIME = (19, 30)  # 7:30 PM
 
 # Storage for game data
 game_data = {
-    "players": [],  # [{'user_id': int, 'main_count': int, 'traveler_count': int}, ...]
+    "players": [],  # [{'user_id': int, 'main_count': int, 'traveler_count': int, 'hangout': bool}, ...]
     "message_id": None,
     "channel_id": None,
     "event_id": None,
@@ -123,6 +124,11 @@ def get_total_main_count():
 def get_total_traveler_count():
     """Get total count of travelers including guests"""
     return sum(player.get("traveler_count", 0) for player in game_data["players"])
+
+
+def get_hangout_players():
+    """Get list of players who are hanging out"""
+    return [player for player in game_data["players"] if player.get("hangout", False)]
 
 
 def find_player(user_id):
@@ -226,26 +232,18 @@ def create_signup_embed():
         inline=True,
     )
 
-    # Combined view section
-    combined_text = ""
-    for i, player in enumerate(game_data["players"], 1):
-        main_count = player.get("main_count", 0)
-        traveler_count = player.get("traveler_count", 0)
+    # Hangout section
+    hangout_players = get_hangout_players()
+    hangout_text = ""
+    for i, player in enumerate(hangout_players, 1):
+        hangout_text += f"{i}. <@{player['user_id']}>\n"
 
-        if main_count > 0 or traveler_count > 0:
-            parts = []
-            if main_count > 0:
-                parts.append(f"🛡️{main_count}")
-            if traveler_count > 0:
-                parts.append(f"🧳{traveler_count}")
-            combined_text += f"{i}. <@{player['user_id']}> {' + '.join(parts)}\n"
-
-    if not combined_text:
-        combined_text = "No players signed up yet"
+    if not hangout_text:
+        hangout_text = "No one hanging out yet"
 
     embed.add_field(
-        name="👥 All Signups",
-        value=combined_text,
+        name=f"🏄‍♀️ Coming to hang ({len(hangout_players)})",
+        value=hangout_text,
         inline=False,
     )
 
@@ -263,6 +261,9 @@ def create_signup_embed():
 {TRAVELER_GUEST_EMOJIS[1]} +3 Travelers
 {TRAVELER_GUEST_EMOJIS[2]} +4 Travelers
 {TRAVELER_GUEST_EMOJIS[3]} +5 Travelers
+
+**Hanging Out:**
+{HANGOUT_EMOJI} Coming to hang and watch!
 
 **Mix & Match:** React to multiple emojis to bring mixed groups!
 Example: 🛡️ + 🚗 = You as main player + 2 traveler guests!"""
@@ -372,6 +373,81 @@ async def check_permissions(interaction: discord.Interaction):
         )
 
 
+@bot.tree.command(name="botc_help", description="List all available BOTC bot commands")
+async def botc_help(interaction: discord.Interaction):
+    """Help command that lists all available commands"""
+    embed = discord.Embed(
+        title="🎲 Blood on the Clocktower Bot Commands",
+        description="Here are all the available commands for the BOTC bot:",
+        color=0x8B0000,
+    )
+
+    commands_info = [
+        {
+            "name": "/setup_game",
+            "description": "Set up the weekly BOTC game signup message with reaction emojis",
+            "permissions": "Requires 'Manage Events' permission",
+        },
+        {
+            "name": "/reset_signups",
+            "description": "Reset current signups but keep the message and event",
+            "permissions": "Requires 'Manage Events' permission",
+        },
+        {
+            "name": "/reset_game",
+            "description": "Reset the game completely for a new week",
+            "permissions": "Requires 'Manage Events' permission",
+        },
+        {
+            "name": "/game_status",
+            "description": "Check the current game status and signups",
+            "permissions": "Available to everyone",
+        },
+        {
+            "name": "/check_permissions",
+            "description": "Check if the bot has all required permissions in this channel",
+            "permissions": "Available to everyone",
+        },
+        {
+            "name": "/ping",
+            "description": "Check if the bot is responsive and view latency",
+            "permissions": "Available to everyone",
+        },
+        {
+            "name": "/time_debug",
+            "description": "Debug timezone and time settings",
+            "permissions": "Available to everyone",
+        },
+        {
+            "name": "/botc_help",
+            "description": "Show this help message",
+            "permissions": "Available to everyone",
+        },
+    ]
+
+    for cmd in commands_info:
+        embed.add_field(
+            name=cmd["name"],
+            value=f"{cmd['description']}\n*{cmd['permissions']}*",
+            inline=False,
+        )
+
+    embed.add_field(
+        name="📝 How to Use Reactions",
+        value=f"""React to the signup message with:
+• {MAIN_PLAYER_EMOJI} or {'/'.join(MAIN_GUEST_EMOJIS)} for main players
+• {TRAVELER_EMOJI} or {'/'.join(TRAVELER_GUEST_EMOJIS)} for travelers
+• {HANGOUT_EMOJI} to hang out and watch the game
+
+You can react to multiple emojis to bring mixed groups!""",
+        inline=False,
+    )
+
+    embed.set_footer(text="🎲 Happy gaming! 🎲")
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 @bot.event
 async def on_ready():
     print(f"{bot.user} has connected to Discord!")
@@ -389,7 +465,7 @@ async def on_ready():
     bot.loop.create_task(health_check())
 
 
-# Updated on_reaction_add with better error handling
+# Updated on_reaction_add with hangout emoji handling
 @bot.event
 async def on_reaction_add(reaction, user):
     """Handle reaction additions for signup"""
@@ -414,14 +490,18 @@ async def on_reaction_add(reaction, user):
     player_index = find_player(user_id)
     if player_index == -1:
         game_data["players"].append(
-            {"user_id": user_id, "main_count": 0, "traveler_count": 0}
+            {"user_id": user_id, "main_count": 0, "traveler_count": 0, "hangout": False}
         )
         player_index = len(game_data["players"]) - 1
 
     player = game_data["players"][player_index]
 
+    # Handle hangout emoji
+    if emoji == HANGOUT_EMOJI:
+        player["hangout"] = True
+        save_game_data()
     # Handle main player emojis
-    if emoji in ALL_MAIN_EMOJIS:
+    elif emoji in ALL_MAIN_EMOJIS:
         new_main_count = get_guest_count_from_emoji(emoji, "main")
         current_main_total = get_total_main_count()
         current_player_main = player.get("main_count", 0)
@@ -484,11 +564,13 @@ async def on_reaction_add(reaction, user):
             )
             return
 
-    # Clean up empty players
+    # Clean up empty players (keep if they have any activity)
     game_data["players"] = [
         p
         for p in game_data["players"]
-        if p.get("main_count", 0) > 0 or p.get("traveler_count", 0) > 0
+        if p.get("main_count", 0) > 0
+        or p.get("traveler_count", 0) > 0
+        or p.get("hangout", False)
     ]
 
     # Update the embed
@@ -519,8 +601,11 @@ async def on_reaction_remove(reaction, user):
 
     player = game_data["players"][player_index]
 
+    # Handle hangout emoji removal
+    if emoji == HANGOUT_EMOJI:
+        player["hangout"] = False
     # Handle main player emoji removal
-    if emoji in ALL_MAIN_EMOJIS:
+    elif emoji in ALL_MAIN_EMOJIS:
         # Check if user still has any main player reactions
         has_main_reaction = False
         for reaction_check in reaction.message.reactions:
@@ -551,11 +636,13 @@ async def on_reaction_remove(reaction, user):
         if not has_traveler_reaction:
             player["traveler_count"] = 0
 
-    # Clean up empty players
+    # Clean up empty players (keep if they have any activity)
     game_data["players"] = [
         p
         for p in game_data["players"]
-        if p.get("main_count", 0) > 0 or p.get("traveler_count", 0) > 0
+        if p.get("main_count", 0) > 0
+        or p.get("traveler_count", 0) > 0
+        or p.get("hangout", False)
     ]
 
     save_game_data()
@@ -613,10 +700,12 @@ async def update_discord_event(guild):
         # Update event description with current signups
         total_main = get_total_main_count()
         total_travelers = get_total_traveler_count()
+        total_hangout = len(get_hangout_players())
 
         description = "Weekly Blood on the Clocktower game!\n\n"
         description += f"Main Players: {total_main}/{MAX_MAIN_PLAYERS}\n"
-        description += f"Travelers: {total_travelers}/{MAX_TRAVELERS}\n\n"
+        description += f"Travelers: {total_travelers}/{MAX_TRAVELERS}\n"
+        description += f"Hanging Out: {total_hangout}\n\n"
         description += "React to the signup message to join!"
 
         await event.edit(description=description)
@@ -641,7 +730,7 @@ async def setup_game(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
     message = await interaction.original_response()
 
-    # Add all reactions (main emoji + guest emojis for both groups)
+    # Add all reactions (main emoji + guest emojis for both groups + hangout)
     await message.add_reaction(MAIN_PLAYER_EMOJI)
     for emoji in MAIN_GUEST_EMOJIS:
         await message.add_reaction(emoji)
@@ -649,6 +738,8 @@ async def setup_game(interaction: discord.Interaction):
     await message.add_reaction(TRAVELER_EMOJI)
     for emoji in TRAVELER_GUEST_EMOJIS:
         await message.add_reaction(emoji)
+
+    await message.add_reaction(HANGOUT_EMOJI)
 
     # Store message info
     game_data["message_id"] = message.id
