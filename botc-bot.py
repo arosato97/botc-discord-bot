@@ -359,6 +359,34 @@ async def remove_user_reactions_from_group(message, user, group_emojis):
 
 
 @bot.tree.command(
+    name="debug_reactions", description="Create a test message to debug reaction events"
+)
+async def debug_reactions(interaction: discord.Interaction):
+    """Create a simple test message to debug reaction events"""
+    embed = discord.Embed(
+        title="🧪 Reaction Event Test",
+        description="React to this message with any emoji, then remove it.\nCheck the server logs for debugging info.",
+        color=0x0099FF,
+    )
+
+    await interaction.response.send_message(embed=embed)
+    message = await interaction.original_response()
+
+    # Add a simple reaction for testing
+    await message.add_reaction("👍")
+
+    # Store this test message ID temporarily for debugging
+    global test_message_id
+    test_message_id = message.id
+
+    logger.info(f"DEBUG TEST: Created test message with ID {message.id}")
+
+
+# Add a global variable for test message ID
+test_message_id = None
+
+
+@bot.tree.command(
     name="check_permissions", description="Check bot permissions in this channel"
 )
 async def check_permissions(interaction: discord.Interaction):
@@ -483,11 +511,17 @@ async def on_ready():
 @bot.event
 async def on_reaction_add(reaction, user):
     """Handle reaction additions for signup"""
-    # Log ALL reaction adds first
     if not user.bot:
         logger.info(
             f"REACTION ADD: {user.display_name} added {reaction.emoji} to message {reaction.message.id}"
         )
+
+        # Special logging for test message
+        if (
+            hasattr(globals(), "test_message_id")
+            and reaction.message.id == test_message_id
+        ):
+            logger.info(f"TEST MESSAGE: Reaction add detected on test message")
 
     if user.bot:
         return
@@ -498,6 +532,7 @@ async def on_reaction_add(reaction, user):
     # Check permissions at the start
     missing_perms = check_bot_permissions(reaction.message.channel)
     if "manage_messages" in missing_perms:
+        logger.warning(f"PERMISSION WARNING: Bot lacks 'Manage Messages' permission")
         await user.send(
             "⚠️ **Bot Permission Issue**: The bot doesn't have 'Manage Messages' permission, "
             "so it can't remove your old reactions. Please ask a server admin to grant this permission."
@@ -602,22 +637,29 @@ async def on_reaction_add(reaction, user):
         await update_discord_event(reaction.message.guild)
 
 
+# Enhanced reaction remove handler with additional debugging
 @bot.event
 async def on_reaction_remove(reaction, user):
     """Handle reaction removals for signups"""
-    print(f"REACTION REMOVE TRIGGERED: {user.display_name} removed {reaction.emoji}")
+    logger.info(
+        f"REACTION REMOVE TRIGGERED: {user.display_name} removed {reaction.emoji} from message {reaction.message.id}"
+    )
+
+    # Special logging for test message
+    if hasattr(globals(), "test_message_id") and reaction.message.id == test_message_id:
+        logger.info(f"TEST MESSAGE: Reaction remove detected on test message!")
 
     if user.bot:
-        print(f"SKIPPING: User is a bot")
+        logger.info(f"SKIPPING: User is a bot")
         return
 
     if reaction.message.id != game_data.get("message_id"):
-        print(
+        logger.info(
             f"SKIPPING: Wrong message ID. Got {reaction.message.id}, expected {game_data.get('message_id')}"
         )
         return
 
-    print(f"PROCESSING: Valid reaction removal from {user.display_name}")
+    logger.info(f"PROCESSING: Valid reaction removal from {user.display_name}")
 
     user_id = user.id
     emoji = str(reaction.emoji)
@@ -625,39 +667,36 @@ async def on_reaction_remove(reaction, user):
     # Find player
     player_index = find_player(user_id)
     if player_index == -1:
-        print(f"ERROR: Player {user.display_name} not found in game data")
+        logger.error(f"ERROR: Player {user.display_name} not found in game data")
         return
 
     player = game_data["players"][player_index]
-    print(
+    logger.info(
         f"FOUND PLAYER: {user.display_name} - main: {player.get('main_count', 0)}, traveler: {player.get('traveler_count', 0)}, hangout: {player.get('hangout', False)}"
     )
 
     # Handle hangout emoji removal
     if emoji == HANGOUT_EMOJI:
-        print(f"HANGOUT REMOVAL: Setting hangout to False for {user.display_name}")
+        logger.info(
+            f"HANGOUT REMOVAL: Setting hangout to False for {user.display_name}"
+        )
         player["hangout"] = False
 
     # Handle main player emoji removal
     elif emoji in ALL_MAIN_EMOJIS:
-        print(f"MAIN PLAYER REMOVAL: Processing {emoji} for {user.display_name}")
+        logger.info(f"MAIN PLAYER REMOVAL: Processing {emoji} for {user.display_name}")
 
         # Find what main player reaction the user currently has (if any)
         current_main_emoji = None
-        print("CHECKING remaining main reactions...")
+        logger.info("CHECKING remaining main reactions...")
         for reaction_check in reaction.message.reactions:
             emoji_str = str(reaction_check.emoji)
-            print(f"  Checking reaction: {emoji_str}")
             if emoji_str in ALL_MAIN_EMOJIS:
-                print(f"    {emoji_str} is a main emoji, checking users...")
                 async for reaction_user in reaction_check.users():
-                    print(
-                        f"      User: {reaction_user.display_name} (ID: {reaction_user.id})"
-                    )
                     if reaction_user.id == user_id:
                         current_main_emoji = emoji_str
-                        print(
-                            f"    FOUND remaining main reaction: {current_main_emoji}"
+                        logger.info(
+                            f"FOUND remaining main reaction: {current_main_emoji}"
                         )
                         break
                 if current_main_emoji:
@@ -668,28 +707,29 @@ async def on_reaction_remove(reaction, user):
         if current_main_emoji:
             new_count = get_guest_count_from_emoji(current_main_emoji, "main")
             player["main_count"] = new_count
-            print(
+            logger.info(
                 f"UPDATED main_count: {old_count} -> {new_count} (based on {current_main_emoji})"
             )
         else:
             player["main_count"] = 0
-            print(f"CLEARED main_count: {old_count} -> 0 (no remaining reactions)")
+            logger.info(
+                f"CLEARED main_count: {old_count} -> 0 (no remaining reactions)"
+            )
 
     # Handle traveler emoji removal
     elif emoji in ALL_TRAVELER_EMOJIS:
-        print(f"TRAVELER REMOVAL: Processing {emoji} for {user.display_name}")
+        logger.info(f"TRAVELER REMOVAL: Processing {emoji} for {user.display_name}")
 
         # Find what traveler reaction the user currently has (if any)
         current_traveler_emoji = None
-        print("CHECKING remaining traveler reactions...")
         for reaction_check in reaction.message.reactions:
             emoji_str = str(reaction_check.emoji)
             if emoji_str in ALL_TRAVELER_EMOJIS:
                 async for reaction_user in reaction_check.users():
                     if reaction_user.id == user_id:
                         current_traveler_emoji = emoji_str
-                        print(
-                            f"    FOUND remaining traveler reaction: {current_traveler_emoji}"
+                        logger.info(
+                            f"FOUND remaining traveler reaction: {current_traveler_emoji}"
                         )
                         break
                 if current_traveler_emoji:
@@ -700,10 +740,10 @@ async def on_reaction_remove(reaction, user):
         if current_traveler_emoji:
             new_count = get_guest_count_from_emoji(current_traveler_emoji, "traveler")
             player["traveler_count"] = new_count
-            print(f"UPDATED traveler_count: {old_count} -> {new_count}")
+            logger.info(f"UPDATED traveler_count: {old_count} -> {new_count}")
         else:
             player["traveler_count"] = 0
-            print(f"CLEARED traveler_count: {old_count} -> 0")
+            logger.info(f"CLEARED traveler_count: {old_count} -> 0")
 
     # Clean up empty players
     players_before = len(game_data["players"])
@@ -717,27 +757,27 @@ async def on_reaction_remove(reaction, user):
     players_after = len(game_data["players"])
 
     if players_before != players_after:
-        print(f"CLEANUP: Removed {players_before - players_after} empty players")
+        logger.info(f"CLEANUP: Removed {players_before - players_after} empty players")
 
     save_game_data()
-    print(f"SAVED: Game data updated")
+    logger.info(f"SAVED: Game data updated")
 
     try:
         # Update the embed
         embed = create_signup_embed()
         await reaction.message.edit(embed=embed)
-        print(f"SUCCESS: Message embed updated")
+        logger.info(f"SUCCESS: Message embed updated")
 
         # Update Discord event if it exists
         if game_data.get("event_id"):
             await update_discord_event(reaction.message.guild)
-            print(f"SUCCESS: Discord event updated")
+            logger.info(f"SUCCESS: Discord event updated")
 
     except Exception as e:
-        print(f"ERROR updating message/event: {e}")
+        logger.error(f"ERROR updating message/event: {e}")
         import traceback
 
-        traceback.print_exc()
+        logger.error(traceback.format_exc())
 
 
 async def create_discord_event(guild):
