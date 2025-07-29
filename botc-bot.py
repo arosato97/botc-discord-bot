@@ -592,21 +592,30 @@ async def on_reaction_remove(reaction, user):
         return
 
     user_id = user.id
+    emoji = str(reaction.emoji)
+
+    print(f"DEBUG: User {user.display_name} removed reaction {emoji}")
 
     # Find player
     player_index = find_player(user_id)
     if player_index == -1:
+        print(f"DEBUG: Player {user.display_name} not found in game data")
         return
 
     player = game_data["players"][player_index]
-    emoji = str(reaction.emoji)
+    print(
+        f"DEBUG: Found player - main_count: {player.get('main_count', 0)}, traveler_count: {player.get('traveler_count', 0)}, hangout: {player.get('hangout', False)}"
+    )
 
     # Handle hangout emoji removal
     if emoji == HANGOUT_EMOJI:
+        print(f"DEBUG: Removing hangout status for {user.display_name}")
         player["hangout"] = False
 
     # Handle main player emoji removal
     elif emoji in ALL_MAIN_EMOJIS:
+        print(f"DEBUG: Processing main player emoji removal for {user.display_name}")
+
         # Find what main player reaction the user currently has (if any)
         current_main_emoji = None
         for reaction_check in reaction.message.reactions:
@@ -614,11 +623,15 @@ async def on_reaction_remove(reaction, user):
                 async for reaction_user in reaction_check.users():
                     if reaction_user.id == user_id:
                         current_main_emoji = str(reaction_check.emoji)
+                        print(
+                            f"DEBUG: Found remaining main reaction: {current_main_emoji}"
+                        )
                         break
                 if current_main_emoji:
                     break
 
         # Update count based on current remaining reaction
+        old_count = player["main_count"]
         if current_main_emoji:
             player["main_count"] = get_guest_count_from_emoji(
                 current_main_emoji, "main"
@@ -626,8 +639,12 @@ async def on_reaction_remove(reaction, user):
         else:
             player["main_count"] = 0
 
+        print(f"DEBUG: Updated main_count from {old_count} to {player['main_count']}")
+
     # Handle traveler emoji removal
     elif emoji in ALL_TRAVELER_EMOJIS:
+        print(f"DEBUG: Processing traveler emoji removal for {user.display_name}")
+
         # Find what traveler reaction the user currently has (if any)
         current_traveler_emoji = None
         for reaction_check in reaction.message.reactions:
@@ -635,11 +652,15 @@ async def on_reaction_remove(reaction, user):
                 async for reaction_user in reaction_check.users():
                     if reaction_user.id == user_id:
                         current_traveler_emoji = str(reaction_check.emoji)
+                        print(
+                            f"DEBUG: Found remaining traveler reaction: {current_traveler_emoji}"
+                        )
                         break
                 if current_traveler_emoji:
                     break
 
         # Update count based on current remaining reaction
+        old_count = player["traveler_count"]
         if current_traveler_emoji:
             player["traveler_count"] = get_guest_count_from_emoji(
                 current_traveler_emoji, "traveler"
@@ -647,7 +668,17 @@ async def on_reaction_remove(reaction, user):
         else:
             player["traveler_count"] = 0
 
+        print(
+            f"DEBUG: Updated traveler_count from {old_count} to {player['traveler_count']}"
+        )
+
+    # Log player status before cleanup
+    print(
+        f"DEBUG: Player status before cleanup - main: {player.get('main_count', 0)}, traveler: {player.get('traveler_count', 0)}, hangout: {player.get('hangout', False)}"
+    )
+
     # Clean up empty players (keep if they have any activity)
+    players_before_cleanup = len(game_data["players"])
     game_data["players"] = [
         p
         for p in game_data["players"]
@@ -655,16 +686,37 @@ async def on_reaction_remove(reaction, user):
         or p.get("traveler_count", 0) > 0
         or p.get("hangout", False)
     ]
+    players_after_cleanup = len(game_data["players"])
+
+    if players_before_cleanup != players_after_cleanup:
+        print(
+            f"DEBUG: Removed {players_before_cleanup - players_after_cleanup} empty players"
+        )
 
     save_game_data()
+    print(f"DEBUG: Game data saved. Total players: {len(game_data['players'])}")
 
-    # Update the embed
-    embed = create_signup_embed()
-    await reaction.message.edit(embed=embed)
+    try:
+        # Update the embed
+        print("DEBUG: Creating new signup embed...")
+        embed = create_signup_embed()
+        print("DEBUG: Updating message with new embed...")
+        await reaction.message.edit(embed=embed)
+        print("DEBUG: Message updated successfully")
 
-    # Update Discord event if it exists
-    if game_data.get("event_id"):
-        await update_discord_event(reaction.message.guild)
+        # Update Discord event if it exists
+        if game_data.get("event_id"):
+            print("DEBUG: Updating Discord event...")
+            await update_discord_event(reaction.message.guild)
+            print("DEBUG: Discord event updated")
+        else:
+            print("DEBUG: No Discord event to update")
+
+    except Exception as e:
+        print(f"ERROR: Failed to update message or event: {e}")
+        import traceback
+
+        traceback.print_exc()
 
 
 async def create_discord_event(guild):
@@ -723,6 +775,35 @@ async def update_discord_event(guild):
 
     except Exception as e:
         print(f"Error updating Discord event: {e}")
+
+
+@bot.tree.command(name="debug_players", description="Debug current player data")
+async def debug_players(interaction: discord.Interaction):
+    """Debug command to see current player data"""
+
+    debug_info = "**Current Game Data:**\n"
+    debug_info += f"Total players in data: {len(game_data['players'])}\n"
+    debug_info += f"Message ID: {game_data.get('message_id')}\n"
+    debug_info += f"Channel ID: {game_data.get('channel_id')}\n\n"
+
+    debug_info += "**Player Details:**\n"
+    for i, player in enumerate(game_data["players"]):
+        user = bot.get_user(player["user_id"])
+        username = user.display_name if user else f"Unknown ({player['user_id']})"
+        debug_info += f"{i+1}. {username}:\n"
+        debug_info += f"   - Main count: {player.get('main_count', 0)}\n"
+        debug_info += f"   - Traveler count: {player.get('traveler_count', 0)}\n"
+        debug_info += f"   - Hangout: {player.get('hangout', False)}\n"
+
+    if not game_data["players"]:
+        debug_info += "No players currently signed up.\n"
+
+    debug_info += f"\n**Totals:**\n"
+    debug_info += f"Main players: {get_total_main_count()}/{MAX_MAIN_PLAYERS}\n"
+    debug_info += f"Travelers: {get_total_traveler_count()}/{MAX_TRAVELERS}\n"
+    debug_info += f"Hanging out: {len(get_hangout_players())}\n"
+
+    await interaction.response.send_message(debug_info, ephemeral=True)
 
 
 @bot.tree.command(name="setup_game", description="Set up the weekly BOTC game signup")
