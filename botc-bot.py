@@ -592,7 +592,6 @@ async def on_reaction_remove(reaction, user):
         return
 
     user_id = user.id
-    emoji = str(reaction.emoji)
 
     # Find player
     player_index = find_player(user_id)
@@ -600,40 +599,52 @@ async def on_reaction_remove(reaction, user):
         return
 
     player = game_data["players"][player_index]
+    emoji = str(reaction.emoji)
 
     # Handle hangout emoji removal
     if emoji == HANGOUT_EMOJI:
         player["hangout"] = False
+
     # Handle main player emoji removal
     elif emoji in ALL_MAIN_EMOJIS:
-        # Check if user still has any main player reactions
-        has_main_reaction = False
+        # Find what main player reaction the user currently has (if any)
+        current_main_emoji = None
         for reaction_check in reaction.message.reactions:
             if str(reaction_check.emoji) in ALL_MAIN_EMOJIS:
                 async for reaction_user in reaction_check.users():
                     if reaction_user.id == user_id:
-                        has_main_reaction = True
+                        current_main_emoji = str(reaction_check.emoji)
                         break
-                if has_main_reaction:
+                if current_main_emoji:
                     break
 
-        if not has_main_reaction:
+        # Update count based on current remaining reaction
+        if current_main_emoji:
+            player["main_count"] = get_guest_count_from_emoji(
+                current_main_emoji, "main"
+            )
+        else:
             player["main_count"] = 0
 
     # Handle traveler emoji removal
     elif emoji in ALL_TRAVELER_EMOJIS:
-        # Check if user still has any traveler reactions
-        has_traveler_reaction = False
+        # Find what traveler reaction the user currently has (if any)
+        current_traveler_emoji = None
         for reaction_check in reaction.message.reactions:
             if str(reaction_check.emoji) in ALL_TRAVELER_EMOJIS:
                 async for reaction_user in reaction_check.users():
                     if reaction_user.id == user_id:
-                        has_traveler_reaction = True
+                        current_traveler_emoji = str(reaction_check.emoji)
                         break
-                if has_traveler_reaction:
+                if current_traveler_emoji:
                     break
 
-        if not has_traveler_reaction:
+        # Update count based on current remaining reaction
+        if current_traveler_emoji:
+            player["traveler_count"] = get_guest_count_from_emoji(
+                current_traveler_emoji, "traveler"
+            )
+        else:
             player["traveler_count"] = 0
 
     # Clean up empty players (keep if they have any activity)
