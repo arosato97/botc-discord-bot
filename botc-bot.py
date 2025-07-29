@@ -7,6 +7,13 @@ import os
 import signal
 import sys
 import pytz  # You'll need to install this: pip install pytz
+import logging
+
+# Setup python logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 # Timezone config
 TIMEZONE = "America/New_York"  # Change this to your timezone
@@ -450,25 +457,38 @@ You can react to multiple emojis to bring mixed groups!""",
 
 @bot.event
 async def on_ready():
-    print(f"{bot.user} has connected to Discord!")
-    print(f"Bot is in {len(bot.guilds)} guild(s)")
+    logger.info(f"BOT READY: {bot.user} has connected to Discord!")
+    logger.info(f"BOT INFO: Connected to {len(bot.guilds)} guild(s)")
+
+    # Log intents for debugging
+    logger.info(
+        f"BOT INTENTS: reactions={bot.intents.reactions}, message_content={bot.intents.message_content}"
+    )
+
     load_game_data()
+    logger.info("GAME DATA: Loaded successfully")
 
     # Sync slash commands
     try:
         synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} command(s)")
+        logger.info(f"COMMANDS: Synced {len(synced)} command(s)")
     except Exception as e:
-        print(f"Failed to sync commands: {e}")
+        logger.error(f"COMMANDS: Failed to sync - {e}")
 
     # Start health check task now that bot is ready
     bot.loop.create_task(health_check())
+    logger.info("HEALTH CHECK: Task started")
 
 
-# Updated on_reaction_add with hangout emoji handling
 @bot.event
 async def on_reaction_add(reaction, user):
     """Handle reaction additions for signup"""
+    # Log ALL reaction adds first
+    if not user.bot:
+        logger.info(
+            f"REACTION ADD: {user.display_name} added {reaction.emoji} to message {reaction.message.id}"
+        )
+
     if user.bot:
         return
 
@@ -776,6 +796,18 @@ async def update_discord_event(guild):
 
     except Exception as e:
         print(f"Error updating Discord event: {e}")
+
+
+@bot.tree.command(name="test_logging", description="Test if logging is working")
+async def test_logging(interaction: discord.Interaction):
+    """Test command to verify logging works"""
+    logger.info(f"TEST COMMAND: Called by {interaction.user.display_name}")
+    logger.warning("TEST WARNING: This is a warning message")
+    logger.error("TEST ERROR: This is an error message")
+
+    await interaction.response.send_message(
+        "Logging test completed! Check the server logs.", ephemeral=True
+    )
 
 
 @bot.tree.command(name="debug_players", description="Debug current player data")
