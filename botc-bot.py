@@ -637,32 +637,38 @@ async def on_reaction_add(reaction, user):
         await update_discord_event(reaction.message.guild)
 
 
-# Enhanced reaction remove handler with additional debugging
 @bot.event
-async def on_reaction_remove(reaction, user):
-    """Handle reaction removals for signups"""
+async def on_raw_reaction_remove(payload):
+    """Handle raw reaction removals for signups"""
     logger.info(
-        f"REACTION REMOVE TRIGGERED: {user.display_name} removed {reaction.emoji} from message {reaction.message.id}"
+        f"RAW REACTION REMOVE: User {payload.user_id} removed {payload.emoji} from message {payload.message_id}"
     )
 
-    # Special logging for test message
-    if hasattr(globals(), "test_message_id") and reaction.message.id == test_message_id:
-        logger.info(f"TEST MESSAGE: Reaction remove detected on test message!")
+    # Skip if no user_id (shouldn't happen, but just in case)
+    if not payload.user_id:
+        logger.info("SKIPPING: No user_id in payload")
+        return
+
+    # Get the user object
+    user = bot.get_user(payload.user_id)
+    if not user:
+        logger.info(f"SKIPPING: Could not find user with ID {payload.user_id}")
+        return
 
     if user.bot:
         logger.info(f"SKIPPING: User is a bot")
         return
 
-    if reaction.message.id != game_data.get("message_id"):
+    if payload.message_id != game_data.get("message_id"):
         logger.info(
-            f"SKIPPING: Wrong message ID. Got {reaction.message.id}, expected {game_data.get('message_id')}"
+            f"SKIPPING: Wrong message ID. Got {payload.message_id}, expected {game_data.get('message_id')}"
         )
         return
 
     logger.info(f"PROCESSING: Valid reaction removal from {user.display_name}")
 
     user_id = user.id
-    emoji = str(reaction.emoji)
+    emoji = str(payload.emoji)
 
     # Find player
     player_index = find_player(user_id)
@@ -674,6 +680,18 @@ async def on_reaction_remove(reaction, user):
     logger.info(
         f"FOUND PLAYER: {user.display_name} - main: {player.get('main_count', 0)}, traveler: {player.get('traveler_count', 0)}, hangout: {player.get('hangout', False)}"
     )
+
+    # Get the message to check remaining reactions
+    channel = bot.get_channel(payload.channel_id)
+    if not channel:
+        logger.error(f"ERROR: Could not find channel {payload.channel_id}")
+        return
+
+    try:
+        message = await channel.fetch_message(payload.message_id)
+    except Exception as e:
+        logger.error(f"ERROR: Could not fetch message {payload.message_id}: {e}")
+        return
 
     # Handle hangout emoji removal
     if emoji == HANGOUT_EMOJI:
@@ -689,7 +707,7 @@ async def on_reaction_remove(reaction, user):
         # Find what main player reaction the user currently has (if any)
         current_main_emoji = None
         logger.info("CHECKING remaining main reactions...")
-        for reaction_check in reaction.message.reactions:
+        for reaction_check in message.reactions:
             emoji_str = str(reaction_check.emoji)
             if emoji_str in ALL_MAIN_EMOJIS:
                 async for reaction_user in reaction_check.users():
@@ -722,7 +740,7 @@ async def on_reaction_remove(reaction, user):
 
         # Find what traveler reaction the user currently has (if any)
         current_traveler_emoji = None
-        for reaction_check in reaction.message.reactions:
+        for reaction_check in message.reactions:
             emoji_str = str(reaction_check.emoji)
             if emoji_str in ALL_TRAVELER_EMOJIS:
                 async for reaction_user in reaction_check.users():
@@ -765,19 +783,37 @@ async def on_reaction_remove(reaction, user):
     try:
         # Update the embed
         embed = create_signup_embed()
-        await reaction.message.edit(embed=embed)
+        await message.edit(embed=embed)
         logger.info(f"SUCCESS: Message embed updated")
 
         # Update Discord event if it exists
         if game_data.get("event_id"):
-            await update_discord_event(reaction.message.guild)
-            logger.info(f"SUCCESS: Discord event updated")
+            guild = bot.get_guild(payload.guild_id)
+            if guild:
+                await update_discord_event(guild)
+                logger.info(f"SUCCESS: Discord event updated")
 
     except Exception as e:
         logger.error(f"ERROR updating message/event: {e}")
         import traceback
 
         logger.error(traceback.format_exc())
+
+
+# Raw test for the debug command
+@bot.event
+async def on_raw_reaction_add(payload):
+    """Handle raw reaction additions - for debugging"""
+    if (
+        payload.user_id
+        and hasattr(globals(), "test_message_id")
+        and payload.message_id == test_message_id
+    ):
+        user = bot.get_user(payload.user_id)
+        if user and not user.bot:
+            logger.info(
+                f"RAW TEST MESSAGE: Reaction add detected on test message from {user.display_name}"
+            )
 
 
 async def create_discord_event(guild):
