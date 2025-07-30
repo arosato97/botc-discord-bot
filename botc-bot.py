@@ -649,10 +649,14 @@ async def on_raw_reaction_remove(payload):
         logger.info("SKIPPING: No user_id in payload")
         return
 
-    # Get the user object
-    user = bot.get_user(payload.user_id)
-    if not user:
-        logger.info(f"SKIPPING: Could not find user with ID {payload.user_id}")
+    # Get the user object - use fetch_user to get from API if not in cache
+    try:
+        user = bot.get_user(payload.user_id)
+        if not user:
+            logger.info(f"User not in cache, fetching from API: {payload.user_id}")
+            user = await bot.fetch_user(payload.user_id)
+    except Exception as e:
+        logger.error(f"ERROR: Could not fetch user with ID {payload.user_id}: {e}")
         return
 
     if user.bot:
@@ -800,7 +804,7 @@ async def on_raw_reaction_remove(payload):
         logger.error(traceback.format_exc())
 
 
-# Raw test for the debug command
+# Also add a raw test for the debug command
 @bot.event
 async def on_raw_reaction_add(payload):
     """Handle raw reaction additions - for debugging"""
