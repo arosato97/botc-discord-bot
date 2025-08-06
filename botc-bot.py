@@ -225,7 +225,7 @@ def create_signup_embed():
     total_traveler_count = get_total_traveler_count()
     total_storyteller_count = get_total_storyteller_count()
 
-    # Storyteller section (put first since it's most important)
+    # Storyteller section (first row, left side)
     storyteller_players = get_storyteller_players()
     storyteller_text = ""
     for i, player in enumerate(storyteller_players, 1):
@@ -240,13 +240,7 @@ def create_signup_embed():
         inline=True,
     )
 
-    # Add empty field for spacing
-    embed.add_field(name="\u200b", value="\u200b", inline=True)
-
-    # Add empty field to force next row
-    embed.add_field(name="\u200b", value="\u200b", inline=True)
-
-    # Main players section
+    # Main players section (first row, right side)
     main_players_text = ""
     for i, player in enumerate(game_data["players"], 1):
         main_count = player.get("main_count", 0)
@@ -262,7 +256,7 @@ def create_signup_embed():
         inline=True,
     )
 
-    # Travelers section
+    # Travelers section (second row, left side)
     travelers_text = ""
     for i, player in enumerate(game_data["players"], 1):
         traveler_count = player.get("traveler_count", 0)
@@ -278,7 +272,7 @@ def create_signup_embed():
         inline=True,
     )
 
-    # Hangout section
+    # Hangout section (second row, right side)
     hangout_players = get_hangout_players()
     hangout_text = ""
     for i, player in enumerate(hangout_players, 1):
@@ -290,7 +284,7 @@ def create_signup_embed():
     embed.add_field(
         name=f"🏄‍♀️ Coming to hang ({len(hangout_players)})",
         value=hangout_text,
-        inline=False,
+        inline=True,
     )
 
     # Instructions
