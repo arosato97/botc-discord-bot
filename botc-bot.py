@@ -256,6 +256,9 @@ def create_signup_embed():
         inline=True,
     )
 
+    # Add empty field to force next row
+    embed.add_field(name="\u200b", value="\u200b", inline=True)
+
     # Travelers section (second row, left side)
     travelers_text = ""
     for i, player in enumerate(game_data["players"], 1):
