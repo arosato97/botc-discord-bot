@@ -58,8 +58,10 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 # Game configuration
 MAX_MAIN_PLAYERS = 15
 MAX_TRAVELERS = 5
+MAX_STORYTELLERS = 1  # New: Maximum storytellers
 MAIN_PLAYER_EMOJI = "🛡️"  # Shield for solo main player
 TRAVELER_EMOJI = "🧳"  # Luggage for solo traveler
+STORYTELLER_EMOJI = "🕐"  # Clock for storyteller
 HANGOUT_EMOJI = "🏄‍♀️"  # Woman surfing for hanging out
 
 # Guest emojis for main players (1-4 guests)
@@ -75,13 +77,16 @@ TRAVELER_GUEST_EMOJIS = [
 # Combined emoji sets for easy checking
 ALL_MAIN_EMOJIS = [MAIN_PLAYER_EMOJI] + MAIN_GUEST_EMOJIS
 ALL_TRAVELER_EMOJIS = [TRAVELER_EMOJI] + TRAVELER_GUEST_EMOJIS
+ALL_STORYTELLER_EMOJIS = [
+    STORYTELLER_EMOJI
+]  # New: Storyteller emojis (just one for now)
 
 GAME_DAY = 3  # Thursday (0=Monday, 6=Sunday)
 GAME_TIME = (19, 30)  # 7:30 PM
 
 # Storage for game data
 game_data = {
-    "players": [],  # [{'user_id': int, 'main_count': int, 'traveler_count': int, 'hangout': bool}, ...]
+    "players": [],  # [{'user_id': int, 'main_count': int, 'traveler_count': int, 'storyteller': bool, 'hangout': bool}, ...]
     "message_id": None,
     "channel_id": None,
     "event_id": None,
@@ -133,9 +138,21 @@ def get_total_traveler_count():
     return sum(player.get("traveler_count", 0) for player in game_data["players"])
 
 
+def get_total_storyteller_count():
+    """Get total count of storytellers"""
+    return sum(1 for player in game_data["players"] if player.get("storyteller", False))
+
+
 def get_hangout_players():
     """Get list of players who are hanging out"""
     return [player for player in game_data["players"] if player.get("hangout", False)]
+
+
+def get_storyteller_players():
+    """Get list of players who are storytellers"""
+    return [
+        player for player in game_data["players"] if player.get("storyteller", False)
+    ]
 
 
 def find_player(user_id):
@@ -206,6 +223,28 @@ def create_signup_embed():
     # Get totals
     total_main_count = get_total_main_count()
     total_traveler_count = get_total_traveler_count()
+    total_storyteller_count = get_total_storyteller_count()
+
+    # Storyteller section (put first since it's most important)
+    storyteller_players = get_storyteller_players()
+    storyteller_text = ""
+    for i, player in enumerate(storyteller_players, 1):
+        storyteller_text += f"{i}. <@{player['user_id']}>\n"
+
+    if not storyteller_text:
+        storyteller_text = "No storyteller signed up yet"
+
+    embed.add_field(
+        name=f"🕐 Storyteller ({total_storyteller_count}/{MAX_STORYTELLERS})",
+        value=storyteller_text,
+        inline=True,
+    )
+
+    # Add empty field for spacing
+    embed.add_field(name="\u200b", value="\u200b", inline=True)
+
+    # Add empty field to force next row
+    embed.add_field(name="\u200b", value="\u200b", inline=True)
 
     # Main players section
     main_players_text = ""
@@ -255,7 +294,10 @@ def create_signup_embed():
     )
 
     # Instructions
-    instructions = f"""**Main Players:**
+    instructions = f"""**Storyteller:**
+{STORYTELLER_EMOJI} Storyteller (Only 1 needed!)
+
+**Main Players:**
 {MAIN_PLAYER_EMOJI} +1 Main Player
 {MAIN_GUEST_EMOJIS[0]} +2 Main Players
 {MAIN_GUEST_EMOJIS[1]} +3 Main Players
@@ -470,6 +512,7 @@ async def botc_help(interaction: discord.Interaction):
     embed.add_field(
         name="📝 How to Use Reactions",
         value=f"""React to the signup message with:
+• {STORYTELLER_EMOJI} for storyteller (only 1 needed!)
 • {MAIN_PLAYER_EMOJI} or {'/'.join(MAIN_GUEST_EMOJIS)} for main players
 • {TRAVELER_EMOJI} or {'/'.join(TRAVELER_GUEST_EMOJIS)} for travelers
 • {HANGOUT_EMOJI} to hang out and watch the game
@@ -545,14 +588,41 @@ async def on_reaction_add(reaction, user):
     player_index = find_player(user_id)
     if player_index == -1:
         game_data["players"].append(
-            {"user_id": user_id, "main_count": 0, "traveler_count": 0, "hangout": False}
+            {
+                "user_id": user_id,
+                "main_count": 0,
+                "traveler_count": 0,
+                "storyteller": False,
+                "hangout": False,
+            }
         )
         player_index = len(game_data["players"]) - 1
 
     player = game_data["players"][player_index]
 
+    # Handle storyteller emoji
+    if emoji == STORYTELLER_EMOJI:
+        current_storyteller_count = get_total_storyteller_count()
+        current_player_is_storyteller = player.get("storyteller", False)
+
+        if current_player_is_storyteller:
+            # Player is already a storyteller, no change needed
+            save_game_data()
+        elif current_storyteller_count < MAX_STORYTELLERS:
+            # Room for another storyteller
+            player["storyteller"] = True
+            save_game_data()
+        else:
+            # No room for another storyteller
+            await safe_remove_reaction(reaction.message, emoji, user)
+            await user.send(
+                f"🚫 **Storyteller spot is already taken!** "
+                f"There can only be {MAX_STORYTELLERS} storyteller per game."
+            )
+            return
+
     # Handle hangout emoji
-    if emoji == HANGOUT_EMOJI:
+    elif emoji == HANGOUT_EMOJI:
         player["hangout"] = True
         save_game_data()
     # Handle main player emojis
@@ -625,6 +695,7 @@ async def on_reaction_add(reaction, user):
         for p in game_data["players"]
         if p.get("main_count", 0) > 0
         or p.get("traveler_count", 0) > 0
+        or p.get("storyteller", False)
         or p.get("hangout", False)
     ]
 
@@ -682,7 +753,7 @@ async def on_raw_reaction_remove(payload):
 
     player = game_data["players"][player_index]
     logger.info(
-        f"FOUND PLAYER: {user.display_name} - main: {player.get('main_count', 0)}, traveler: {player.get('traveler_count', 0)}, hangout: {player.get('hangout', False)}"
+        f"FOUND PLAYER: {user.display_name} - main: {player.get('main_count', 0)}, traveler: {player.get('traveler_count', 0)}, storyteller: {player.get('storyteller', False)}, hangout: {player.get('hangout', False)}"
     )
 
     # Get the message to check remaining reactions
@@ -697,8 +768,28 @@ async def on_raw_reaction_remove(payload):
         logger.error(f"ERROR: Could not fetch message {payload.message_id}: {e}")
         return
 
+    # Handle storyteller emoji removal
+    if emoji == STORYTELLER_EMOJI:
+        logger.info(f"STORYTELLER REMOVAL: Processing {emoji} for {user.display_name}")
+
+        # Check if user still has the storyteller reaction
+        still_has_storyteller_reaction = False
+        for reaction_check in message.reactions:
+            if str(reaction_check.emoji) == STORYTELLER_EMOJI:
+                async for reaction_user in reaction_check.users():
+                    if reaction_user.id == user_id:
+                        still_has_storyteller_reaction = True
+                        logger.info(f"User still has storyteller reaction")
+                        break
+                if still_has_storyteller_reaction:
+                    break
+
+        if not still_has_storyteller_reaction:
+            player["storyteller"] = False
+            logger.info(f"CLEARED storyteller status for {user.display_name}")
+
     # Handle hangout emoji removal
-    if emoji == HANGOUT_EMOJI:
+    elif emoji == HANGOUT_EMOJI:
         logger.info(
             f"HANGOUT REMOVAL: Setting hangout to False for {user.display_name}"
         )
@@ -774,6 +865,7 @@ async def on_raw_reaction_remove(payload):
         for p in game_data["players"]
         if p.get("main_count", 0) > 0
         or p.get("traveler_count", 0) > 0
+        or p.get("storyteller", False)
         or p.get("hangout", False)
     ]
     players_after = len(game_data["players"])
@@ -864,9 +956,11 @@ async def update_discord_event(guild):
         # Update event description with current signups
         total_main = get_total_main_count()
         total_travelers = get_total_traveler_count()
+        total_storytellers = get_total_storyteller_count()
         total_hangout = len(get_hangout_players())
 
         description = "Weekly Blood on the Clocktower game!\n\n"
+        description += f"Storyteller: {total_storytellers}/{MAX_STORYTELLERS}\n"
         description += f"Main Players: {total_main}/{MAX_MAIN_PLAYERS}\n"
         description += f"Travelers: {total_travelers}/{MAX_TRAVELERS}\n"
         description += f"Hanging Out: {total_hangout}\n\n"
@@ -906,12 +1000,14 @@ async def debug_players(interaction: discord.Interaction):
         debug_info += f"{i+1}. {username}:\n"
         debug_info += f"   - Main count: {player.get('main_count', 0)}\n"
         debug_info += f"   - Traveler count: {player.get('traveler_count', 0)}\n"
+        debug_info += f"   - Storyteller: {player.get('storyteller', False)}\n"
         debug_info += f"   - Hangout: {player.get('hangout', False)}\n"
 
     if not game_data["players"]:
         debug_info += "No players currently signed up.\n"
 
     debug_info += f"\n**Totals:**\n"
+    debug_info += f"Storytellers: {get_total_storyteller_count()}/{MAX_STORYTELLERS}\n"
     debug_info += f"Main players: {get_total_main_count()}/{MAX_MAIN_PLAYERS}\n"
     debug_info += f"Travelers: {get_total_traveler_count()}/{MAX_TRAVELERS}\n"
     debug_info += f"Hanging out: {len(get_hangout_players())}\n"
@@ -934,6 +1030,9 @@ async def setup_game(interaction: discord.Interaction):
 
     await interaction.response.send_message(embed=embed)
     message = await interaction.original_response()
+
+    # Add storyteller reaction first
+    await message.add_reaction(STORYTELLER_EMOJI)
 
     # Add all reactions (main emoji + guest emojis for both groups + hangout)
     await message.add_reaction(MAIN_PLAYER_EMOJI)
