@@ -208,100 +208,127 @@ def get_next_thursday():
 
 
 def create_signup_embed():
-    """Create the signup embed message"""
-    embed = discord.Embed(
-        title="🕐 Blood on the Clocktower - Weekly Game Night",
-        description="React to join the game! You can react to multiple emojis to bring mixed groups.",
-        color=0x8B0000,
-    )
+    """Create the signup embed message with better error handling"""
+    try:
+        embed = discord.Embed(
+            title="🕐 Blood on the Clocktower - Weekly Game Night",
+            description="React to join the game! You can react to multiple emojis to bring mixed groups.",
+            color=0x8B0000,
+        )
 
-    next_game = get_next_thursday()
-    embed.add_field(
-        name="📅 Next Game", value=f"<t:{int(next_game.timestamp())}:F>", inline=False
-    )
+        next_game = get_next_thursday()
+        embed.add_field(
+            name="📅 Next Game",
+            value=f"<t:{int(next_game.timestamp())}:F>",
+            inline=False,
+        )
 
-    # Get totals
-    total_main_count = get_total_main_count()
-    total_traveler_count = get_total_traveler_count()
-    total_storyteller_count = get_total_storyteller_count()
+        # Get totals
+        total_main_count = get_total_main_count()
+        total_traveler_count = get_total_traveler_count()
+        total_storyteller_count = get_total_storyteller_count()
 
-    # Storyteller section (first row, left side)
-    storyteller_players = get_storyteller_players()
-    storyteller_text = ""
-    for i, player in enumerate(storyteller_players, 1):
-        storyteller_text += f"{i}. <@{player['user_id']}>\n"
+        # Storyteller section (first row, left side)
+        storyteller_players = get_storyteller_players()
+        storyteller_text = ""
+        for i, player in enumerate(storyteller_players, 1):
+            user_mention = f"<@{player['user_id']}>"
+            storyteller_text += f"{i}. {user_mention}\n"
 
-    if not storyteller_text:
-        storyteller_text = "No storyteller signed up yet"
+        if not storyteller_text:
+            storyteller_text = "No storyteller signed up yet"
 
-    embed.add_field(
-        name=f"🕐 Storyteller ({total_storyteller_count}/{MAX_STORYTELLERS})",
-        value=storyteller_text,
-        inline=True,
-    )
+        # Ensure storyteller text isn't too long (Discord has a 1024 character limit per field)
+        if len(storyteller_text) > 1000:
+            storyteller_text = storyteller_text[:997] + "..."
 
-    # Main players section (first row, right side)
-    main_players_text = ""
-    for i, player in enumerate(game_data["players"], 1):
-        main_count = player.get("main_count", 0)
-        if main_count > 0:
-            main_players_text += f"{i}. <@{player['user_id']}> ({main_count})\n"
+        embed.add_field(
+            name=f"🕐 Storyteller ({total_storyteller_count}/{MAX_STORYTELLERS})",
+            value=storyteller_text,
+            inline=True,
+        )
 
-    if not main_players_text:
-        main_players_text = "No main players signed up yet"
+        # Main players section (first row, right side)
+        main_players_text = ""
+        counter = 1
+        for player in game_data["players"]:
+            main_count = player.get("main_count", 0)
+            if main_count > 0:
+                user_mention = f"<@{player['user_id']}>"
+                main_players_text += f"{counter}. {user_mention} ({main_count})\n"
+                counter += 1
 
-    embed.add_field(
-        name=f"🛡️ Main Players ({total_main_count}/{MAX_MAIN_PLAYERS})",
-        value=main_players_text,
-        inline=True,
-    )
+        if not main_players_text:
+            main_players_text = "No main players signed up yet"
 
-    # Add empty field to force next row (full width)
-    embed.add_field(name="\u200b", value="\u200b", inline=False)
+        # Ensure main players text isn't too long
+        if len(main_players_text) > 1000:
+            main_players_text = main_players_text[:997] + "..."
 
-    # Travelers section (second row, left side)
-    travelers_text = ""
-    for i, player in enumerate(game_data["players"], 1):
-        traveler_count = player.get("traveler_count", 0)
-        if traveler_count > 0:
-            travelers_text += f"{i}. <@{player['user_id']}> ({traveler_count})\n"
+        embed.add_field(
+            name=f"🛡️ Main Players ({total_main_count}/{MAX_MAIN_PLAYERS})",
+            value=main_players_text,
+            inline=True,
+        )
 
-    if not travelers_text:
-        travelers_text = "No travelers signed up yet"
+        # Add empty field to force next row (full width)
+        embed.add_field(name="\u200b", value="\u200b", inline=False)
 
-    embed.add_field(
-        name=f"🧳 Travelers ({total_traveler_count}/{MAX_TRAVELERS})",
-        value=travelers_text,
-        inline=True,
-    )
+        # Travelers section (second row, left side)
+        travelers_text = ""
+        counter = 1
+        for player in game_data["players"]:
+            traveler_count = player.get("traveler_count", 0)
+            if traveler_count > 0:
+                user_mention = f"<@{player['user_id']}>"
+                travelers_text += f"{counter}. {user_mention} ({traveler_count})\n"
+                counter += 1
 
-    # Hangout section (second row, right side)
-    hangout_players = get_hangout_players()
-    hangout_text = ""
-    for i, player in enumerate(hangout_players, 1):
-        hangout_text += f"{i}. <@{player['user_id']}>\n"
+        if not travelers_text:
+            travelers_text = "No travelers signed up yet"
 
-    if not hangout_text:
-        hangout_text = "No one hanging out yet"
+        # Ensure travelers text isn't too long
+        if len(travelers_text) > 1000:
+            travelers_text = travelers_text[:997] + "..."
 
-    embed.add_field(
-        name=f"🏄‍♀️ Coming to hang ({len(hangout_players)})",
-        value=hangout_text,
-        inline=True,
-    )
+        embed.add_field(
+            name=f"🧳 Travelers ({total_traveler_count}/{MAX_TRAVELERS})",
+            value=travelers_text,
+            inline=True,
+        )
 
-    # Instructions
-    instructions = f"""**Storyteller:**
-{STORYTELLER_EMOJI} Be our fair Storyteller!
+        # Hangout section (second row, right side)
+        hangout_players = get_hangout_players()
+        hangout_text = ""
+        for i, player in enumerate(hangout_players, 1):
+            user_mention = f"<@{player['user_id']}>"
+            hangout_text += f"{i}. {user_mention}\n"
+
+        if not hangout_text:
+            hangout_text = "No one hanging out yet"
+
+        # Ensure hangout text isn't too long
+        if len(hangout_text) > 1000:
+            hangout_text = hangout_text[:997] + "..."
+
+        embed.add_field(
+            name=f"🏄‍♀️ Coming to hang ({len(hangout_players)})",
+            value=hangout_text,
+            inline=True,
+        )
+
+        # Instructions - split into smaller chunks to avoid hitting Discord limits
+        instructions = f"""**Storyteller:**
+{STORYTELLER_EMOJI} Storyteller (Only 1 needed!)
 
 **Main Players:**
 {MAIN_PLAYER_EMOJI} +1 Main Player
 {MAIN_GUEST_EMOJIS[0]} +2 Main Players
 {MAIN_GUEST_EMOJIS[1]} +3 Main Players
 {MAIN_GUEST_EMOJIS[2]} +4 Main Players
-{MAIN_GUEST_EMOJIS[3]} +5 Main Players
+{MAIN_GUEST_EMOJIS[3]} +5 Main Players"""
 
-**Travelers:**
+        instructions2 = f"""**Travelers:**
 {TRAVELER_EMOJI} +1 Traveler
 {TRAVELER_GUEST_EMOJIS[0]} +2 Travelers
 {TRAVELER_GUEST_EMOJIS[1]} +3 Travelers
@@ -309,16 +336,49 @@ def create_signup_embed():
 {TRAVELER_GUEST_EMOJIS[3]} +5 Travelers
 
 **Hanging Out:**
-{HANGOUT_EMOJI} Coming to hang and watch!
+{HANGOUT_EMOJI} Coming to hang and watch!"""
 
-**Mix & Match:** React to multiple emojis to bring mixed groups!
-Example: 🛡️ + 🚗 = You as main player + 2 traveler guests!"""
+        # Check if instructions would exceed embed limit (6000 characters total)
+        current_length = len(embed.title or "") + len(embed.description or "")
+        for field in embed.fields:
+            current_length += len(field.name or "") + len(field.value or "")
 
-    embed.add_field(name="How to Join", value=instructions, inline=False)
+        if (
+            current_length + len(instructions) + len(instructions2) < 5500
+        ):  # Leave some buffer
+            embed.add_field(name="How to Join", value=instructions, inline=False)
+            embed.add_field(
+                name="Mix & Match",
+                value=instructions2
+                + "\n\n**Mix & Match:** React to multiple emojis to bring mixed groups!\nExample: 🛡️ + 🚗 = You as main player + 2 traveler guests!",
+                inline=False,
+            )
+        else:
+            # Fallback to shorter instructions
+            embed.add_field(
+                name="How to Join",
+                value="React with the emojis below to join! Check pinned messages for full instructions.",
+                inline=False,
+            )
 
-    embed.set_footer(text="🎲 May the odds be ever in your favor! 🎲")
+        embed.set_footer(text="🎲 May the odds be ever in your favor! 🎲")
 
-    return embed
+        return embed
+
+    except Exception as e:
+        logger.error(f"ERROR creating embed: {e}")
+        # Return a simple fallback embed
+        fallback_embed = discord.Embed(
+            title="🕐 Blood on the Clocktower - Weekly Game Night",
+            description="React to join the game!",
+            color=0x8B0000,
+        )
+        fallback_embed.add_field(
+            name="Error",
+            value="There was an error creating the full embed. Please contact an admin.",
+            inline=False,
+        )
+        return fallback_embed
 
 
 def check_bot_permissions(channel):
@@ -1017,49 +1077,105 @@ async def debug_players(interaction: discord.Interaction):
 @bot.tree.command(name="setup_game", description="Set up the weekly BOTC game signup")
 async def setup_game(interaction: discord.Interaction):
     """Slash command to set up the weekly game"""
-    # Check if user has manage events permission
-    if not interaction.user.guild_permissions.manage_events:
-        await interaction.response.send_message(
-            "You need 'Manage Events' permission to set up the game!", ephemeral=True
-        )
-        return
+    try:
+        # Check if user has manage events permission
+        if not interaction.user.guild_permissions.manage_events:
+            await interaction.response.send_message(
+                "You need 'Manage Events' permission to set up the game!",
+                ephemeral=True,
+            )
+            return
 
-    # Create the signup embed
-    embed = create_signup_embed()
+        # Acknowledge the interaction immediately to prevent timeout
+        await interaction.response.defer()
 
-    await interaction.response.send_message(embed=embed)
-    message = await interaction.original_response()
+        # Create the signup embed
+        try:
+            embed = create_signup_embed()
+            logger.info("SUCCESS: Created signup embed")
+        except Exception as e:
+            logger.error(f"ERROR: Failed to create embed: {e}")
+            await interaction.followup.send(
+                f"❌ Error creating signup embed: {e}", ephemeral=True
+            )
+            return
 
-    # Add storyteller reaction first
-    await message.add_reaction(STORYTELLER_EMOJI)
+        # Send the embed
+        try:
+            message = await interaction.followup.send(embed=embed, wait=True)
+            logger.info("SUCCESS: Sent signup message")
+        except Exception as e:
+            logger.error(f"ERROR: Failed to send embed: {e}")
+            await interaction.followup.send(
+                f"❌ Error sending signup message: {e}", ephemeral=True
+            )
+            return
 
-    # Add all reactions (main emoji + guest emojis for both groups + hangout)
-    await message.add_reaction(MAIN_PLAYER_EMOJI)
-    for emoji in MAIN_GUEST_EMOJIS:
-        await message.add_reaction(emoji)
+        # Add reactions
+        try:
+            # Add storyteller reaction first
+            await message.add_reaction(STORYTELLER_EMOJI)
 
-    await message.add_reaction(TRAVELER_EMOJI)
-    for emoji in TRAVELER_GUEST_EMOJIS:
-        await message.add_reaction(emoji)
+            # Add all reactions (main emoji + guest emojis for both groups + hangout)
+            await message.add_reaction(MAIN_PLAYER_EMOJI)
+            for emoji in MAIN_GUEST_EMOJIS:
+                await message.add_reaction(emoji)
 
-    await message.add_reaction(HANGOUT_EMOJI)
+            await message.add_reaction(TRAVELER_EMOJI)
+            for emoji in TRAVELER_GUEST_EMOJIS:
+                await message.add_reaction(emoji)
 
-    # Store message info
-    game_data["message_id"] = message.id
-    game_data["channel_id"] = interaction.channel.id
-    game_data["week_of"] = get_next_thursday().strftime("%Y-%m-%d")
+            await message.add_reaction(HANGOUT_EMOJI)
+            logger.info("SUCCESS: Added all reactions")
+        except Exception as e:
+            logger.error(f"ERROR: Failed to add reactions: {e}")
+            await interaction.followup.send(
+                f"⚠️ Message created but failed to add reactions: {e}", ephemeral=True
+            )
 
-    # Create Discord event
-    event = await create_discord_event(interaction.guild)
+        # Store message info
+        game_data["message_id"] = message.id
+        game_data["channel_id"] = interaction.channel.id
+        game_data["week_of"] = get_next_thursday().strftime("%Y-%m-%d")
 
-    save_game_data()
+        # Create Discord event
+        try:
+            event = await create_discord_event(interaction.guild)
+            logger.info(
+                f"SUCCESS: Created Discord event: {event.id if event else 'None'}"
+            )
+        except Exception as e:
+            logger.error(f"ERROR: Failed to create Discord event: {e}")
+            event = None
 
-    # Send confirmation
-    await interaction.followup.send(
-        f"✅ Game setup complete! "
-        f"{'Event created successfully!' if event else 'Note: Could not create Discord event.'}",
-        ephemeral=True,
-    )
+        save_game_data()
+
+        # Send confirmation
+        try:
+            await interaction.followup.send(
+                f"✅ Game setup complete! "
+                f"{'Event created successfully!' if event else 'Note: Could not create Discord event.'}",
+                ephemeral=True,
+            )
+        except Exception as e:
+            logger.error(f"ERROR: Failed to send confirmation: {e}")
+
+    except Exception as e:
+        logger.error(f"CRITICAL ERROR in setup_game: {e}")
+        import traceback
+
+        logger.error(traceback.format_exc())
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message(
+                    f"❌ Critical error setting up game: {e}", ephemeral=True
+                )
+            else:
+                await interaction.followup.send(
+                    f"❌ Critical error setting up game: {e}", ephemeral=True
+                )
+        except:
+            pass
 
 
 @bot.tree.command(
