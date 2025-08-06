@@ -292,7 +292,7 @@ def create_signup_embed():
 
     # Instructions
     instructions = f"""**Storyteller:**
-{STORYTELLER_EMOJI} Storyteller (Only 1 needed!)
+{STORYTELLER_EMOJI} Be our fair Storyteller!
 
 **Main Players:**
 {MAIN_PLAYER_EMOJI} +1 Main Player
@@ -919,15 +919,17 @@ async def create_discord_event(guild):
             tz = pytz.timezone(TIMEZONE)
             next_game = tz.localize(next_game)
 
-        # Create the event
+        # Create the event as an external event
         event = await guild.create_scheduled_event(
             name="Blood on the Clocktower - Weekly Game Night",
             description="Weekly Blood on the Clocktower game! React to the signup message to join.",
             start_time=next_game,
-            end_time=next_game + timedelta(hours=3),  # Assuming 3-hour games
-            location="Voice Channel",
+            end_time=next_game + timedelta(hours=3),
             privacy_level=discord.PrivacyLevel.guild_only,
-            entity_type=discord.EntityType.voice,
+            entity_type=discord.EntityType.external,  # Changed to external
+            entity_metadata=discord.EntityMetadata(
+                location="Game Night Location"
+            ),  # Add location metadata
             reason="Weekly BOTC game night",
         )
 
