@@ -256,8 +256,8 @@ def create_signup_embed():
         inline=True,
     )
 
-    # Add empty field to force next row
-    embed.add_field(name="\u200b", value="\u200b", inline=True)
+    # Add empty field to force next row (full width)
+    embed.add_field(name="\u200b", value="\u200b", inline=False)
 
     # Travelers section (second row, left side)
     travelers_text = ""
