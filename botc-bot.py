@@ -74,6 +74,9 @@ TRAVELER_GUEST_EMOJIS = [
     "🚢",
 ]  # Car +1, Plane +2, Train +3, Cruise Ship +4
 
+SEAL_EMOJI = "🦭"  # Seal emoji for the fun seal kiss GIF
+SEAL_GIF_URL = "https://tenor.com/view/seal-kiss-kiss-seal-seal-kissing-kissing-seals-seal-mwah-gif-4077423147374940760"
+
 # Combined emoji sets for easy checking
 ALL_MAIN_EMOJIS = [MAIN_PLAYER_EMOJI] + MAIN_GUEST_EMOJIS
 ALL_TRAVELER_EMOJIS = [TRAVELER_EMOJI] + TRAVELER_GUEST_EMOJIS
@@ -319,7 +322,7 @@ def create_signup_embed():
 
         # Instructions - split into smaller chunks to avoid hitting Discord limits
         instructions = f"""**Storyteller:**
-{STORYTELLER_EMOJI} Storyteller (Only 1 needed!)
+{STORYTELLER_EMOJI} Storyteller (Be the shepard of Ravenswood Bluff)
 
 **Main Players:**
 {MAIN_PLAYER_EMOJI} +1 Main Player
@@ -682,6 +685,7 @@ async def on_reaction_add(reaction, user):
     elif emoji == HANGOUT_EMOJI:
         player["hangout"] = True
         save_game_data()
+
     # Handle main player emojis
     elif emoji in ALL_MAIN_EMOJIS:
         new_main_count = get_guest_count_from_emoji(emoji, "main")
@@ -712,6 +716,41 @@ async def on_reaction_add(reaction, user):
                 f"Try a smaller group or add travelers instead!"
             )
             return
+    # Handle seal emoji - send cute GIF!
+    elif emoji == SEAL_EMOJI:
+        try:
+            # Create an embed with the seal GIF
+            seal_embed = discord.Embed(
+                title="🦭 Seal of Approval! 🦭",
+                description="A gift for u!",
+                color=0x4169E1,  # Royal blue color
+            )
+            seal_embed.add_field(
+                name="Here's your seal kiss!",
+                value=f"[Click here for 🦭!]({SEAL_GIF_URL})",
+                inline=False,
+            )
+
+            # Send as DM to the user
+            await user.send(embed=seal_embed)
+
+            # Remove the reaction so others can click it too
+            await safe_remove_reaction(reaction.message, emoji, user)
+
+        except discord.Forbidden:
+            # If we can't DM the user, send a temporary message in the channel
+            try:
+                temp_message = await reaction.message.channel.send(
+                    f"🦭 {user.mention} got a seal kiss! {SEAL_GIF_URL} 🦭"
+                )
+                await asyncio.sleep(10)
+                await temp_message.delete()
+            except:
+                pass
+        except Exception as e:
+            print(f"Error sending seal GIF: {e}")
+
+        return  # Early return since this doesn't affect game signups
 
     # Handle traveler emojis
     elif emoji in ALL_TRAVELER_EMOJIS:
@@ -1126,6 +1165,7 @@ async def setup_game(interaction: discord.Interaction):
                 await message.add_reaction(emoji)
 
             await message.add_reaction(HANGOUT_EMOJI)
+            await message.add_reaction(SEAL_EMOJI)
             logger.info("SUCCESS: Added all reactions")
         except Exception as e:
             logger.error(f"ERROR: Failed to add reactions: {e}")
