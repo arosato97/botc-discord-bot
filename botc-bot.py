@@ -733,6 +733,7 @@ async def on_reaction_add(reaction, user):
 
             # Send as DM to the user
             await user.send(embed=seal_embed)
+            await user.send(SEAL_GIF_URL)
 
             # Remove the reaction so others can click it too
             await safe_remove_reaction(reaction.message, emoji, user)
