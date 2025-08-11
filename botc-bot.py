@@ -725,11 +725,6 @@ async def on_reaction_add(reaction, user):
                 description="A gift for u!",
                 color=0x4169E1,  # Royal blue color
             )
-            seal_embed.add_field(
-                name="Here's your seal kiss!",
-                value=f"[Click here for 🦭!]({SEAL_GIF_URL})",
-                inline=False,
-            )
 
             # Send as DM to the user
             await user.send(embed=seal_embed)
