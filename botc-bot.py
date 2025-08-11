@@ -721,8 +721,8 @@ async def on_reaction_add(reaction, user):
         try:
             # Create an embed with the seal GIF
             seal_embed = discord.Embed(
-                title="🦭 Seal of Approval! 🦭",
-                description="A gift for u!",
+                title="🦭 You Have Our Seal of Approval! 🦭",
+                description="Here's a GIFt for you!",
                 color=0x4169E1,  # Royal blue color
             )
 
