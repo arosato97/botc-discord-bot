@@ -1014,26 +1014,37 @@ async def create_discord_event(guild):
             tz = pytz.timezone(TIMEZONE)
             next_game = tz.localize(next_game)
 
-        # Create the event as an external event
+        # Create the event as an external event with proper metadata format
         event = await guild.create_scheduled_event(
             name="Blood on the Clocktower - Weekly Game Night",
             description="Weekly Blood on the Clocktower game! React to the signup message to join.",
             start_time=next_game,
             end_time=next_game + timedelta(hours=3),
             privacy_level=discord.PrivacyLevel.guild_only,
-            entity_type=discord.EntityType.external,  # Changed to external
-            entity_metadata=discord.EntityMetadata(
-                location="Game Night Location"
-            ),  # Add location metadata
+            entity_type=discord.EntityType.external,
+            entity_metadata={
+                "location": "105 Lawton St Brookline"
+            },  # Pass as dictionary
             reason="Weekly BOTC game night",
         )
 
         game_data["event_id"] = event.id
         save_game_data()
 
+        logger.info(f"Successfully created Discord event with ID: {event.id}")
         return event
+
+    except discord.Forbidden:
+        logger.error("Bot lacks permission to create events")
+        return None
+    except discord.HTTPException as e:
+        logger.error(f"HTTP error creating Discord event: {e}")
+        return None
     except Exception as e:
-        print(f"Error creating Discord event: {e}")
+        logger.error(f"Unexpected error creating Discord event: {e}")
+        import traceback
+
+        logger.error(traceback.format_exc())
         return None
 
 
