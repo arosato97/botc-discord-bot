@@ -1427,7 +1427,7 @@ async def setup_game(
 
         # Send the confirmation_embed
         try:
-            await interaction.followup.send(embed=confirmation_embed)
+            await interaction.followup.send(embed=confirmation_embed, ephemeral=True)
             logger.info("SUCCESS: Sent confirmation_embed")
         except Exception as e:
             logger.error(f"ERROR: Failed to send confirmation_embed: {e}")
