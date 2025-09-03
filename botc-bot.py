@@ -85,7 +85,7 @@ ALL_STORYTELLER_EMOJIS = [
     STORYTELLER_EMOJI
 ]  # New: Storyteller emojis (just one for now)
 
-GAME_DAY = 3  # Thursday (0=Monday, 6=Sunday)
+GAME_DAY = 4  # Thursday (0=Monday, 6=Sunday)
 GAME_TIME = (19, 30)  # 7:30 PM
 
 # Storage for game data
