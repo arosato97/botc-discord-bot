@@ -6,8 +6,9 @@ import json
 import os
 import signal
 import sys
-import pytz  # You'll need to install this: pip install pytz
+import pytz
 import logging
+import re
 
 # Setup python logging
 logging.basicConfig(
@@ -1363,30 +1364,19 @@ async def setup_game(
             )
             return
 
-        # Update global game settings temporarily for this game
-        global GAME_DAY, GAME_TIME, TIMEZONE
-        original_day, original_time, original_tz = GAME_DAY, GAME_TIME, TIMEZONE
-        GAME_DAY = game_day
-        GAME_TIME = (game_hour, game_minute)
-        if timezone:
-            TIMEZONE = game_timezone
-
+        # Create the signup embed
         try:
-            # Create the signup embed (using the modified get_next_thursday function)
-            # We need to temporarily override get_next_thursday to use our custom settings
-            def get_custom_game_time():
-                return next_game_time
-
-            # Monkey patch for this execution
-            original_get_next_thursday = globals().get("get_next_thursday")
-            globals()["get_next_thursday"] = get_custom_game_time
+            # Store the custom game time in game_data before creating embed
+            game_data["custom_game_time"] = {
+                "day": game_day,
+                "hour": game_hour,
+                "minute": game_minute,
+                "timezone": game_timezone,
+                "datetime": next_game_time.isoformat(),
+            }
 
             embed = create_signup_embed()
             logger.info("SUCCESS: Created signup embed with custom time")
-
-            # Restore original function
-            if original_get_next_thursday:
-                globals()["get_next_thursday"] = original_get_next_thursday
 
         except Exception as e:
             logger.error(f"ERROR: Failed to create embed: {e}")
@@ -1394,9 +1384,6 @@ async def setup_game(
                 f"Error creating signup embed: {e}", ephemeral=True
             )
             return
-        finally:
-            # Restore original settings
-            GAME_DAY, GAME_TIME, TIMEZONE = original_day, original_time, original_tz
 
         # Send confirmation embed first
         day_names = [
@@ -1473,13 +1460,6 @@ async def setup_game(
         game_data["message_id"] = message.id
         game_data["channel_id"] = interaction.channel.id
         game_data["week_of"] = next_game_time.strftime("%Y-%m-%d")
-        game_data["custom_game_time"] = {
-            "day": game_day,
-            "hour": game_hour,
-            "minute": game_minute,
-            "timezone": game_timezone,
-            "datetime": next_game_time.isoformat(),
-        }
 
         # Create Discord event with custom time
         try:
