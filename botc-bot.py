@@ -219,7 +219,7 @@ def create_signup_embed():
             color=0x8B0000,
         )
 
-        next_game = get_next_thursday()
+        next_game = get_current_game_time()
         embed.add_field(
             name="📅 Next Game",
             value=f"<t:{int(next_game.timestamp())}:F>",
@@ -401,6 +401,128 @@ def check_bot_permissions(channel):
     missing_perms = [perm for perm, has_perm in required_perms.items() if not has_perm]
 
     return missing_perms
+
+
+def parse_time_input(time_str):
+    """Parse various time input formats into hour and minute"""
+    # Remove extra whitespace and convert to lowercase
+    time_str = time_str.strip().lower()
+
+    # Common time patterns
+    patterns = [
+        # 24-hour format: 19:30, 7:30
+        (r"^(\d{1,2}):(\d{2})$", lambda m: (int(m.group(1)), int(m.group(2)))),
+        # 12-hour format with AM/PM: 7:30 PM, 7:30PM, 7:30 pm
+        (
+            r"^(\d{1,2}):(\d{2})\s*(am|pm)$",
+            lambda m: parse_12_hour(int(m.group(1)), int(m.group(2)), m.group(3)),
+        ),
+        # Hour only with AM/PM: 7 PM, 7PM, 7 pm
+        (
+            r"^(\d{1,2})\s*(am|pm)$",
+            lambda m: parse_12_hour(int(m.group(1)), 0, m.group(2)),
+        ),
+        # Hour only (assumes PM for evening hours, AM for morning): 7, 19
+        (r"^(\d{1,2})$", lambda m: parse_hour_only(int(m.group(1)))),
+    ]
+
+    for pattern, parser_func in patterns:
+        match = re.match(pattern, time_str)
+        if match:
+            try:
+                hour, minute = parser_func(match)
+                if 0 <= hour <= 23 and 0 <= minute <= 59:
+                    return hour, minute
+            except ValueError:
+                continue
+
+    raise ValueError(f"Could not parse time format: '{time_str}'")
+
+
+def parse_12_hour(hour, minute, am_pm):
+    """Convert 12-hour format to 24-hour format"""
+    if hour < 1 or hour > 12:
+        raise ValueError("Hour must be between 1 and 12 for 12-hour format")
+
+    if am_pm == "am":
+        if hour == 12:
+            hour = 0
+    else:  # pm
+        if hour != 12:
+            hour += 12
+
+    return hour, minute
+
+
+def parse_hour_only(hour):
+    """Parse hour-only input, making reasonable assumptions"""
+    if hour < 0 or hour > 23:
+        raise ValueError("Hour must be between 0 and 23")
+
+    # If it's a reasonable evening hour (6-11), assume PM
+    # Otherwise use as-is (24-hour format)
+    if 6 <= hour <= 11:
+        return hour + 12, 0  # Convert to PM
+    else:
+        return hour, 0
+
+
+def parse_day_input(day_str):
+    """Parse day input and return the weekday number (0=Monday, 6=Sunday)"""
+    day_str = day_str.strip().lower()
+
+    day_mapping = {
+        "monday": 0,
+        "mon": 0,
+        "m": 0,
+        "tuesday": 1,
+        "tue": 1,
+        "tues": 1,
+        "t": 1,
+        "wednesday": 2,
+        "wed": 2,
+        "w": 2,
+        "thursday": 3,
+        "thu": 3,
+        "thur": 3,
+        "th": 3,
+        "friday": 4,
+        "fri": 4,
+        "f": 4,
+        "saturday": 5,
+        "sat": 5,
+        "s": 5,
+        "sunday": 6,
+        "sun": 6,
+        "su": 6,
+    }
+
+    if day_str in day_mapping:
+        return day_mapping[day_str]
+
+    raise ValueError(f"Could not parse day: '{day_str}'")
+
+
+def get_next_game_time(day_of_week, hour, minute, timezone_str=None):
+    """Get the next occurrence of the specified day and time"""
+    if timezone_str is None:
+        timezone_str = TIMEZONE
+
+    tz = pytz.timezone(timezone_str)
+    now = datetime.now(tz)
+
+    # Calculate days until the target day
+    days_ahead = day_of_week - now.weekday()
+    if days_ahead <= 0:  # Target day already passed this week
+        days_ahead += 7
+
+    # Create the target datetime
+    target_date = now + timedelta(days=days_ahead)
+    target_datetime = target_date.replace(
+        hour=hour, minute=minute, second=0, microsecond=0
+    )
+
+    return target_datetime
 
 
 async def safe_remove_reaction(message, emoji, user):
@@ -1046,6 +1168,45 @@ async def create_discord_event(guild):
         return None
 
 
+async def create_custom_time_discord_event(guild, game_datetime):
+    """Create a Discord scheduled event for the game with custom datetime"""
+    try:
+        # Make sure we're working with timezone-aware datetime
+        if game_datetime.tzinfo is None:
+            tz = pytz.timezone(TIMEZONE)
+            game_datetime = tz.localize(game_datetime)
+
+        event = await guild.create_scheduled_event(
+            name="Blood on the Clocktower - Weekly Game Night",
+            description="React to the signup message so we know who you're bringing!",
+            start_time=game_datetime,
+            end_time=game_datetime + timedelta(hours=3),
+            privacy_level=discord.PrivacyLevel.guild_only,
+            entity_type=discord.EntityType.external,
+            location="105 Lawton Street Apt. 2, Brookline",
+        )
+
+        game_data["event_id"] = event.id
+        save_game_data()
+
+        logger.info(f"Successfully created Discord event with ID: {event.id}")
+        return event
+
+    except Exception as e:
+        logger.error(f"Error creating custom Discord event: {e}")
+        return None
+
+
+# Add this function to handle custom game times in embeds
+def get_current_game_time():
+    """Get the current game time, using custom time if set"""
+    if game_data.get("custom_game_time"):
+        custom_time = game_data["custom_game_time"]
+        return datetime.fromisoformat(custom_time["datetime"])
+    else:
+        return get_next_thursday()
+
+
 async def update_discord_event(guild):
     """Update the Discord event with current attendees"""
     try:
@@ -1119,8 +1280,18 @@ async def debug_players(interaction: discord.Interaction):
 
 
 @bot.tree.command(name="setup_game", description="Set up the weekly BOTC game signup")
-async def setup_game(interaction: discord.Interaction):
-    """Slash command to set up the weekly game"""
+@discord.app_commands.describe(
+    day="Day of the week (e.g., Thursday, Thu, Th)",
+    time="Time for the game (e.g., 7:30 PM, 19:30, 7 PM)",
+    timezone="Timezone (optional, uses server default if not specified)",
+)
+async def setup_game(
+    interaction: discord.Interaction,
+    day: str = None,
+    time: str = None,
+    timezone: str = None,
+):
+    """Enhanced slash command to set up the weekly game with custom day/time"""
     try:
         # Check if user has manage events permission
         if not interaction.user.guild_permissions.manage_events:
@@ -1130,62 +1301,191 @@ async def setup_game(interaction: discord.Interaction):
             )
             return
 
-        # Acknowledge the interaction immediately to prevent timeout
-        await interaction.response.defer()
+        # If no parameters provided, use defaults
+        if day is None and time is None:
+            game_day = GAME_DAY
+            game_hour, game_minute = GAME_TIME
+            used_defaults = True
+        else:
+            used_defaults = False
 
-        # Create the signup embed
+            # Parse day parameter
+            if day is None:
+                game_day = GAME_DAY
+            else:
+                try:
+                    game_day = parse_day_input(day)
+                except ValueError as e:
+                    await interaction.response.send_message(
+                        f"Invalid day format: {e}\n"
+                        f"Try: Monday, Tuesday, Wed, Thu, Fri, Sat, Sunday",
+                        ephemeral=True,
+                    )
+                    return
+
+            # Parse time parameter
+            if time is None:
+                game_hour, game_minute = GAME_TIME
+            else:
+                try:
+                    game_hour, game_minute = parse_time_input(time)
+                except ValueError as e:
+                    await interaction.response.send_message(
+                        f"Invalid time format: {e}\n"
+                        f"Try: 7:30 PM, 19:30, 7 PM, or just 19",
+                        ephemeral=True,
+                    )
+                    return
+
+        # Validate timezone if provided
+        game_timezone = timezone or TIMEZONE
         try:
-            embed = create_signup_embed()
-            logger.info("SUCCESS: Created signup embed")
-        except Exception as e:
-            logger.error(f"ERROR: Failed to create embed: {e}")
-            await interaction.followup.send(
-                f"❌ Error creating signup embed: {e}", ephemeral=True
+            pytz.timezone(game_timezone)
+        except pytz.exceptions.UnknownTimeZoneError:
+            await interaction.response.send_message(
+                f"Invalid timezone: {game_timezone}\n"
+                f"Try: America/New_York, America/Chicago, America/Denver, America/Los_Angeles",
+                ephemeral=True,
             )
             return
 
-        # Send the embed
+        # Acknowledge the interaction immediately to prevent timeout
+        await interaction.response.defer()
+
+        # Calculate the next game time
+        try:
+            next_game_time = get_next_game_time(
+                game_day, game_hour, game_minute, game_timezone
+            )
+        except Exception as e:
+            await interaction.followup.send(
+                f"Error calculating game time: {e}", ephemeral=True
+            )
+            return
+
+        # Update global game settings temporarily for this game
+        global GAME_DAY, GAME_TIME, TIMEZONE
+        original_day, original_time, original_tz = GAME_DAY, GAME_TIME, TIMEZONE
+        GAME_DAY = game_day
+        GAME_TIME = (game_hour, game_minute)
+        if timezone:
+            TIMEZONE = game_timezone
+
+        try:
+            # Create the signup embed (using the modified get_next_thursday function)
+            # We need to temporarily override get_next_thursday to use our custom settings
+            def get_custom_game_time():
+                return next_game_time
+
+            # Monkey patch for this execution
+            original_get_next_thursday = globals().get("get_next_thursday")
+            globals()["get_next_thursday"] = get_custom_game_time
+
+            embed = create_signup_embed()
+            logger.info("SUCCESS: Created signup embed with custom time")
+
+            # Restore original function
+            if original_get_next_thursday:
+                globals()["get_next_thursday"] = original_get_next_thursday
+
+        except Exception as e:
+            logger.error(f"ERROR: Failed to create embed: {e}")
+            await interaction.followup.send(
+                f"Error creating signup embed: {e}", ephemeral=True
+            )
+            return
+        finally:
+            # Restore original settings
+            GAME_DAY, GAME_TIME, TIMEZONE = original_day, original_time, original_tz
+
+        # Send confirmation embed first
+        day_names = [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday",
+            "Sunday",
+        ]
+        confirmation_embed = discord.Embed(
+            title="Game Setup Configuration", color=0x00FF00
+        )
+
+        time_str = f"{game_hour:02d}:{game_minute:02d}"
+        if game_hour == 0:
+            time_12h = f"12:{game_minute:02d} AM"
+        elif game_hour < 12:
+            time_12h = f"{game_hour}:{game_minute:02d} AM"
+        elif game_hour == 12:
+            time_12h = f"12:{game_minute:02d} PM"
+        else:
+            time_12h = f"{game_hour-12}:{game_minute:02d} PM"
+
+        confirmation_embed.add_field(name="Day", value=day_names[game_day], inline=True)
+        confirmation_embed.add_field(
+            name="Time", value=f"{time_str} ({time_12h})", inline=True
+        )
+        confirmation_embed.add_field(name="Timezone", value=game_timezone, inline=True)
+        confirmation_embed.add_field(
+            name="Next Game",
+            value=f"<t:{int(next_game_time.timestamp())}:F>",
+            inline=False,
+        )
+
+        if used_defaults:
+            confirmation_embed.set_footer(
+                text="Used default settings (no parameters provided)"
+            )
+
+        await interaction.followup.send(embed=confirmation_embed)
+
+        # Send the actual signup embed
         try:
             message = await interaction.followup.send(embed=embed, wait=True)
             logger.info("SUCCESS: Sent signup message")
         except Exception as e:
             logger.error(f"ERROR: Failed to send embed: {e}")
             await interaction.followup.send(
-                f"❌ Error sending signup message: {e}", ephemeral=True
+                f"Error sending signup message: {e}", ephemeral=True
             )
             return
 
         # Add reactions
         try:
-            # Add storyteller reaction first
             await message.add_reaction(STORYTELLER_EMOJI)
-
-            # Add all reactions (main emoji + guest emojis for both groups + hangout)
             await message.add_reaction(MAIN_PLAYER_EMOJI)
             for emoji in MAIN_GUEST_EMOJIS:
                 await message.add_reaction(emoji)
-
             await message.add_reaction(TRAVELER_EMOJI)
             for emoji in TRAVELER_GUEST_EMOJIS:
                 await message.add_reaction(emoji)
-
             await message.add_reaction(HANGOUT_EMOJI)
             await message.add_reaction(SEAL_EMOJI)
             logger.info("SUCCESS: Added all reactions")
         except Exception as e:
             logger.error(f"ERROR: Failed to add reactions: {e}")
             await interaction.followup.send(
-                f"⚠️ Message created but failed to add reactions: {e}", ephemeral=True
+                f"Message created but failed to add reactions: {e}", ephemeral=True
             )
 
-        # Store message info
+        # Store message info with custom game time
         game_data["message_id"] = message.id
         game_data["channel_id"] = interaction.channel.id
-        game_data["week_of"] = get_next_thursday().strftime("%Y-%m-%d")
+        game_data["week_of"] = next_game_time.strftime("%Y-%m-%d")
+        game_data["custom_game_time"] = {
+            "day": game_day,
+            "hour": game_hour,
+            "minute": game_minute,
+            "timezone": game_timezone,
+            "datetime": next_game_time.isoformat(),
+        }
 
-        # Create Discord event
+        # Create Discord event with custom time
         try:
-            event = await create_discord_event(interaction.guild)
+            event = await create_custom_time_discord_event(
+                interaction.guild, next_game_time
+            )
             logger.info(
                 f"SUCCESS: Created Discord event: {event.id if event else 'None'}"
             )
@@ -1195,10 +1495,10 @@ async def setup_game(interaction: discord.Interaction):
 
         save_game_data()
 
-        # Send confirmation
+        # Send final confirmation
         try:
             await interaction.followup.send(
-                f"✅ Game setup complete! "
+                f"Game setup complete! "
                 f"{'Event created successfully!' if event else 'Note: Could not create Discord event.'}",
                 ephemeral=True,
             )
@@ -1213,11 +1513,11 @@ async def setup_game(interaction: discord.Interaction):
         try:
             if not interaction.response.is_done():
                 await interaction.response.send_message(
-                    f"❌ Critical error setting up game: {e}", ephemeral=True
+                    f"Critical error setting up game: {e}", ephemeral=True
                 )
             else:
                 await interaction.followup.send(
-                    f"❌ Critical error setting up game: {e}", ephemeral=True
+                    f"Critical error setting up game: {e}", ephemeral=True
                 )
         except:
             pass
