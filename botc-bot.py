@@ -1014,7 +1014,8 @@ async def create_discord_event(guild):
             tz = pytz.timezone(TIMEZONE)
             next_game = tz.localize(next_game)
 
-        # Create the event as an external event with proper metadata format
+        # Create the event as an external event
+        # For external events, location is passed directly as a parameter
         event = await guild.create_scheduled_event(
             name="Blood on the Clocktower - Weekly Game Night",
             description="Weekly Blood on the Clocktower game! React to the signup message to join.",
@@ -1022,10 +1023,8 @@ async def create_discord_event(guild):
             end_time=next_game + timedelta(hours=3),
             privacy_level=discord.PrivacyLevel.guild_only,
             entity_type=discord.EntityType.external,
-            entity_metadata={
-                "location": "105 Lawton St Brookline"
-            },  # Pass as dictionary
-            reason="Weekly BOTC game night",
+            location="Game Night Location",  # Location is a direct parameter for external events
+            # reason="Weekly BOTC game night",  # Remove if causing issues
         )
 
         game_data["event_id"] = event.id
