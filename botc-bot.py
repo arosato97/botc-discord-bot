@@ -1018,13 +1018,12 @@ async def create_discord_event(guild):
         # For external events, location is passed directly as a parameter
         event = await guild.create_scheduled_event(
             name="Blood on the Clocktower - Weekly Game Night",
-            description="Weekly Blood on the Clocktower game! React to the signup message to join.",
+            description="React to the signup message so we know who you're bringing!",
             start_time=next_game,
             end_time=next_game + timedelta(hours=3),
             privacy_level=discord.PrivacyLevel.guild_only,
             entity_type=discord.EntityType.external,
-            location="Game Night Location",  # Location is a direct parameter for external events
-            # reason="Weekly BOTC game night",  # Remove if causing issues
+            location="105 Lawton Street Apt. 2, Brookline",  # Location is a direct parameter for external events
         )
 
         game_data["event_id"] = event.id
