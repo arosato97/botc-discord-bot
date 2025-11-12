@@ -75,17 +75,15 @@ TRAVELER_GUEST_EMOJIS = [
     "🚢",
 ]  # Car +1, Plane +2, Train +3, Cruise Ship +4
 
-SEAL_EMOJI = "🦭"  # Seal emoji for the fun seal kiss GIF
+SEAL_EMOJI = "🦭"  # Seal emoji for the seal kiss GIF
 SEAL_GIF_URL = "https://tenor.com/view/seal-kiss-kiss-seal-seal-kissing-kissing-seals-seal-mwah-gif-4077423147374940760"
 
 # Combined emoji sets for easy checking
 ALL_MAIN_EMOJIS = [MAIN_PLAYER_EMOJI] + MAIN_GUEST_EMOJIS
 ALL_TRAVELER_EMOJIS = [TRAVELER_EMOJI] + TRAVELER_GUEST_EMOJIS
-ALL_STORYTELLER_EMOJIS = [
-    STORYTELLER_EMOJI
-]  # New: Storyteller emojis (just one for now)
+ALL_STORYTELLER_EMOJIS = [STORYTELLER_EMOJI]
 
-GAME_DAY = 4  # Thursday (0=Monday, 6=Sunday)
+GAME_DAY = 3  # Thursday (0=Monday, 6=Sunday)
 GAME_TIME = (19, 30)  # 7:30 PM
 
 # Storage for game data
@@ -900,7 +898,7 @@ async def on_reaction_add(reaction, user):
             await user.send(
                 f"🚫 **Not enough traveler spots!** "
                 f"You requested {new_traveler_count} traveler spot{'s' if new_traveler_count != 1 else ''} but only {available_spots} remain. "
-                f"Try a smaller group or add main players instead!"
+                f"Try adding a smaller group or adding main players instead!"
             )
             return
 
